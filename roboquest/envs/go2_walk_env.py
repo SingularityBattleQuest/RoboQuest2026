@@ -38,7 +38,8 @@ KP = 20.0            # 位置ゲイン
 KD = 0.5             # 微分ゲイン
 
 _MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "models", "go2")
-MODEL_XML = os.path.join(_MODEL_DIR, "go2.xml")
+# go2.xml には床がないため walk_scene.xml（床付き）をデフォルトとして使用
+MODEL_XML = os.path.join(_MODEL_DIR, "walk_scene.xml")
 
 # 速度コマンドのサンプリング範囲
 VEL_CMD_RANGE = {
