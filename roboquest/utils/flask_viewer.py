@@ -635,15 +635,266 @@ fetchFrame(); // 初回即座に取得
 </body>
 </html>"""
 
+    # ── ノートブック直接表示用 HTML ──────────────────────────────────────────
+
+    def _notebook_html(self, base: str, uid: int) -> str:
+        """Colab 出力セルに直接レンダリングする HTML（絶対 URL を使用）。
+
+        IFrame を使わず IPython.display.HTML() で埋め込むことで
+        X-Frame-Options / proxyPort 認証の問題を完全に回避する。
+        """
+        w, h      = self.render_wh
+        fms       = round(1000 / self.render_fps)
+        has_oni   = "true"  if (self.with_oni and self.model.nq > 19) else "false"
+        has_pol   = "true"  if self.policy else "false"
+        oni_spd   = self.oni_speed
+        mode_lbl  = "🤖 AI モード" if self.policy else "🕹 手動モード"
+        oni_hide  = "display:none" if not (self.with_oni and self.model.nq > 19) else ""
+        man_hide  = "display:none" if self.policy else ""
+
+        return f"""
+<div id="rqv{uid}" style="background:#0d0d14;color:#e0e0f0;
+  font-family:'Segoe UI',system-ui,sans-serif;border-radius:8px;
+  overflow:hidden;display:flex;flex-direction:column;">
+<div style="background:#13131f;border-bottom:1px solid #2a2a40;
+  padding:6px 12px;display:flex;align-items:center;gap:10px;">
+  <span style="font-size:.9rem;color:#a0c0ff;">🐾 RoboQuest 2026</span>
+  <span style="background:#1e3060;color:#7090e0;padding:2px 8px;
+    border-radius:10px;font-size:.72rem;">{mode_lbl}</span>
+  <span id="rqfps{uid}" style="margin-left:auto;font-size:.72rem;color:#445;">-- fps</span>
+  <a href="{base}" target="_blank"
+     style="font-size:.72rem;color:#4080ff;text-decoration:none;">🔗 別タブ</a>
+</div>
+<div style="display:flex;">
+  <div style="flex:1;background:#080810;display:flex;align-items:center;
+    justify-content:center;position:relative;min-height:{h}px;">
+    <img id="rqimg{uid}" src="{base}/frame"
+         style="max-width:100%;max-height:{h}px;object-fit:contain;display:block;"
+         alt="loading...">
+    <div id="rqov{uid}" style="display:none;position:absolute;top:50%;left:50%;
+      transform:translate(-50%,-50%);background:rgba(10,10,20,.92);
+      border:2px solid #4080ff;border-radius:12px;padding:22px 36px;text-align:center;">
+      <div id="rqot{uid}" style="font-size:1.4rem;font-weight:700;"></div>
+      <div id="rqos{uid}" style="font-size:.85rem;color:#8899bb;margin-top:6px;"></div>
+    </div>
+  </div>
+  <div style="width:190px;background:#13131f;border-left:1px solid #2a2a40;
+    display:flex;flex-direction:column;overflow-y:auto;">
+
+    <div style="padding:10px;border-bottom:1px solid #1e1e30;">
+      <div style="font-size:.65rem;text-transform:uppercase;color:#4466aa;
+        letter-spacing:.08em;margin-bottom:8px;">📊 ステータス</div>
+      <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:4px;">
+        <span style="color:#778;">生存時間</span>
+        <span id="rqtime{uid}" style="color:#c0d8ff;font-weight:600;">0.0 s</span></div>
+      <div style="background:#1e1e30;border-radius:3px;height:5px;margin-bottom:6px;overflow:hidden;">
+        <div id="rqtbar{uid}" style="height:100%;width:0%;
+          background:linear-gradient(90deg,#4080ff,#40c0ff);transition:width .12s;"></div></div>
+      <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:4px;">
+        <span style="color:#778;">鬼との距離</span>
+        <span id="rqdist{uid}" style="color:#c0d8ff;font-weight:600;">-- m</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:4px;">
+        <span style="color:#778;">高さ</span>
+        <span id="rqhgt{uid}" style="color:#c0d8ff;font-weight:600;">-- m</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:.78rem;">
+        <span style="color:#778;">状態</span>
+        <span id="rqst{uid}" style="color:#c0d8ff;font-weight:600;">待機中</span></div>
+    </div>
+
+    <div style="padding:10px;border-bottom:1px solid #1e1e30;">
+      <div style="font-size:.65rem;text-transform:uppercase;color:#4466aa;
+        letter-spacing:.08em;margin-bottom:8px;">⏯ シミュレーション</div>
+      <div style="display:flex;gap:4px;margin-bottom:5px;">
+        <button id="rqplay{uid}"
+          style="flex:1;padding:7px 0;border:1px solid #4080ff;border-radius:5px;
+          background:#1e4080;color:#a0c0ff;cursor:pointer;font-size:.82rem;font-weight:600;">
+          ▶ 開始</button>
+        <button id="rqrst{uid}"
+          style="flex:0 0 36px;padding:7px 0;border:1px solid #2a3a5a;border-radius:5px;
+          background:#1a2440;color:#a0c0ff;cursor:pointer;font-size:.82rem;">↺</button>
+      </div>
+    </div>
+
+    <div id="rqman{uid}" style="padding:10px;border-bottom:1px solid #1e1e30;{man_hide}">
+      <div style="font-size:.65rem;text-transform:uppercase;color:#4466aa;
+        letter-spacing:.08em;margin-bottom:8px;">🕹 操作 (WASD)</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin-bottom:6px;">
+        <div></div>
+        <button class="rqd{uid}" data-vx="1"  data-vy="0" data-om="0"
+          style="padding:8px 0;border:1px solid #2a3a5a;border-radius:5px;
+          background:#1a2440;color:#a0c0ff;cursor:pointer;font-size:.82rem;">↑</button>
+        <div></div>
+        <button class="rqd{uid}" data-vx="0"  data-vy="0" data-om="1"
+          style="padding:8px 0;border:1px solid #2a3a5a;border-radius:5px;
+          background:#1a2440;color:#a0c0ff;cursor:pointer;font-size:.82rem;">←</button>
+        <button id="rqstp{uid}"
+          style="padding:8px 0;border:1px solid #2a3a5a;border-radius:5px;
+          background:#1a2440;color:#a0c0ff;cursor:pointer;font-size:.82rem;">■</button>
+        <button class="rqd{uid}" data-vx="0"  data-vy="0" data-om="-1"
+          style="padding:8px 0;border:1px solid #2a3a5a;border-radius:5px;
+          background:#1a2440;color:#a0c0ff;cursor:pointer;font-size:.82rem;">→</button>
+        <div></div>
+        <button class="rqd{uid}" data-vx="-1" data-vy="0" data-om="0"
+          style="padding:8px 0;border:1px solid #2a3a5a;border-radius:5px;
+          background:#1a2440;color:#a0c0ff;cursor:pointer;font-size:.82rem;">↓</button>
+        <div></div>
+      </div>
+    </div>
+
+    <div id="rqoni{uid}" style="padding:10px;{oni_hide}">
+      <div style="font-size:.65rem;text-transform:uppercase;color:#4466aa;
+        letter-spacing:.08em;margin-bottom:8px;">👹 鬼の速度</div>
+      <div style="display:flex;justify-content:space-between;font-size:.72rem;color:#889;margin-bottom:2px;">
+        <span>速度</span><span id="rqonilbl{uid}" style="color:#aac;font-weight:600;">{oni_spd:.3f}</span></div>
+      <input id="rqonislider{uid}" type="range"
+             min="0.005" max="0.08" step="0.005" value="{oni_spd}"
+             style="width:100%;accent-color:#4080ff;">
+    </div>
+
+  </div>
+</div>
+</div>
+
+<script>
+(function() {{
+  var BASE = '{base}';
+  var MAX_TIME = {MAX_TIME};
+  var TAG_DIST = {TAG_DIST};
+  var HAS_POLICY = {has_pol};
+  var uid = '{uid}';
+
+  var playing = false;
+  var frameDelay = {fms};
+  var frameTimer = null;
+  var fcnt = 0, lastFpsT = Date.now();
+
+  function $ (id) {{ return document.getElementById(id + uid); }}
+
+  // ── フレーム取得 ────────────────────────────────────────────────────────
+  function startStream() {{
+    if (frameTimer) clearInterval(frameTimer);
+    frameTimer = setInterval(fetchFrame, frameDelay);
+  }}
+  function fetchFrame() {{
+    var t = new Image();
+    t.onload = function() {{
+      $('rqimg').src = t.src;
+      fcnt++;
+      var now = Date.now();
+      if (now - lastFpsT >= 1000) {{
+        $('rqfps').textContent = Math.round(fcnt * 1000 / (now - lastFpsT)) + ' fps';
+        fcnt = 0; lastFpsT = now;
+      }}
+    }};
+    t.src = BASE + '/frame?t=' + Date.now();
+  }}
+
+  // ── ステータス取得 ──────────────────────────────────────────────────────
+  setInterval(function() {{
+    fetch(BASE + '/status').then(function(r) {{ return r.json(); }})
+      .then(function(st) {{
+        $('rqtime').textContent = st.time.toFixed(1) + ' s';
+        $('rqtbar').style.width = Math.min(100, st.time / MAX_TIME * 100) + '%';
+        $('rqdist').textContent = st.dist.toFixed(2) + ' m';
+        $('rqhgt').textContent  = st.rz.toFixed(3) + ' m';
+        $('rqdist').style.color = st.dist < 1.0 ? '#ff6060' : st.dist > 2 ? '#60e060' : '#c0d8ff';
+        if (st.done) {{
+          var ok = st.reason === 'escaped';
+          $('rqov').style.display = 'block';
+          $('rqov').style.borderColor = ok ? '#40c060' : '#ff4040';
+          $('rqot').textContent = ok ? '🎉 逃げ切り成功！' : st.reason === 'tagged' ? '😱 タグされた！' : '😵 転倒！';
+          $('rqot').style.color = ok ? '#80ff80' : '#ff8080';
+          $('rqos').textContent = '生存時間: ' + st.time.toFixed(1) + ' 秒';
+          $('rqst').textContent  = ok ? '🎉' : st.reason === 'tagged' ? '😱' : '😵';
+        }} else {{
+          $('rqst').textContent = st.running ? (st.dist < TAG_DIST * 1.5 ? '🔴 危険' : '🟢 逃走中') : '停止中';
+        }}
+      }}).catch(function() {{}});
+  }}, 300);
+
+  // ── コマンド送信 ────────────────────────────────────────────────────────
+  function cmd(obj) {{
+    fetch(BASE + '/cmd', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify(obj)
+    }}).catch(function() {{}});
+  }}
+
+  // ── ボタン ──────────────────────────────────────────────────────────────
+  var playBtn = $('rqplay');
+  playBtn.addEventListener('click', function() {{
+    playing = !playing;
+    playBtn.textContent = playing ? '⏸ 停止' : '▶ 開始';
+    cmd({{action: playing ? 'play' : 'pause'}});
+    $('rqov').style.display = 'none';
+  }});
+  $('rqrst').addEventListener('click', function() {{
+    playing = true; playBtn.textContent = '⏸ 停止';
+    cmd({{action: 'reset'}}); $('rqov').style.display = 'none';
+  }});
+  var stp = $('rqstp');
+  if (stp) stp.addEventListener('click', function() {{
+    cmd({{action: 'vel', vx: 0, vy: 0, omega: 0}});
+  }});
+
+  // 方向ボタン
+  document.querySelectorAll('.rqd{uid}').forEach(function(btn) {{
+    var go   = function() {{ cmd({{action:'vel',
+      vx: parseFloat(btn.dataset.vx) * .8,
+      vy: parseFloat(btn.dataset.vy) * .8,
+      omega: parseFloat(btn.dataset.om) * .8}}); }};
+    var stop = function() {{ cmd({{action:'vel', vx:0, vy:0, omega:0}}); }};
+    btn.addEventListener('pointerdown', go);
+    btn.addEventListener('pointerup',   stop);
+    btn.addEventListener('pointerleave',stop);
+  }});
+
+  // WASD キーボード
+  if (!HAS_POLICY) {{
+    var keys = new Set();
+    var applyKeys = function() {{
+      cmd({{action:'vel',
+        vx:    (keys.has('w') ? .8 : 0) - (keys.has('s') ? .8 : 0),
+        vy:    (keys.has('q') ? .4 : 0) - (keys.has('e') ? .4 : 0),
+        omega: (keys.has('a') ? .8 : 0) - (keys.has('d') ? .8 : 0)
+      }});
+    }};
+    document.addEventListener('keydown', function(e) {{
+      keys.add(e.key.toLowerCase()); applyKeys();
+      if (e.key === ' ') {{ e.preventDefault(); playBtn.click(); }}
+      if (e.key.toLowerCase() === 'r') $('rqrst').click();
+    }});
+    document.addEventListener('keyup', function(e) {{
+      keys.delete(e.key.toLowerCase()); applyKeys();
+    }});
+  }}
+
+  // 鬼速度スライダー
+  var onislider = $('rqonislider');
+  if (onislider) onislider.addEventListener('input', function(e) {{
+    $('rqonilbl').textContent = parseFloat(e.target.value).toFixed(3);
+    cmd({{action:'oni_speed', value: parseFloat(e.target.value)}});
+  }});
+
+  // 起動
+  startStream();
+  fetchFrame();
+}})();
+</script>"""
+
     # ── 公開 API ──────────────────────────────────────────────────────────────
 
     def display(self, port: int = 7860, height: int = 540) -> None:
         """Colab セル内にビューアーを表示する。
 
+        IFrame を使わず IPython.display.HTML() でノートブックに直接レンダリングする。
+        Flask の /frame・/status・/cmd は絶対 URL (proxyPort) 経由でアクセスする。
+
         Parameters
         ----------
         port   : 希望ポート番号（使用中の場合は自動で次のポートを探す）
-        height : IFrame の高さ (px)
+        height : 映像エリアの高さ (px)
         """
         import socket
 
@@ -652,43 +903,36 @@ fetchFrame(); // 初回即座に取得
         for p in range(port, port + 20):
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                if s.connect_ex(('127.0.0.1', p)) != 0:   # 接続できない = 空き
+                if s.connect_ex(('127.0.0.1', p)) != 0:
                     actual_port = p
                     break
         if actual_port is None:
-            print(f"❌ ポート {port}〜{port+19} がすべて使用中です。Colab ランタイムを再起動してください。")
+            print(f"❌ ポート {port}〜{port+19} がすべて使用中です。ランタイムを再起動してください。")
             return
-
         if actual_port != port:
             print(f"⚠  ポート {port} は使用中のため {actual_port} を使用します。")
 
         # ── バックグラウンドスレッド起動 ────────────────────────────────────
         threading.Thread(target=self._sim_loop,    daemon=True).start()
         threading.Thread(target=self._render_loop, daemon=True).start()
-        time.sleep(0.6)   # 最初のフレームが生成されるまで待機
+        time.sleep(0.8)   # 最初のフレームが生成されるまで待機
 
         threading.Thread(
             target=self._start_server, args=(actual_port,), daemon=True
         ).start()
         time.sleep(1.2)   # Flask 起動待機
 
-        # ── Colab proxy URL を取得して表示 ──────────────────────────────────
+        # ── Colab: HTML を直接ノートブック出力にレンダリング ────────────────
         try:
             from google.colab.output import eval_js
-            from google.colab import output as _colab_out
+            from IPython.display import HTML, display as ipy_display
+
             proxy_url = eval_js(f'google.colab.kernel.proxyPort({actual_port})')
-            print(f"✅ ビューアー起動 → {proxy_url}")
-            print("   ↑ 上のリンクを新しいタブで開いてください")
-            print("   （初回は「接続を許可」ボタンが表示される場合があります → クリックしてください）")
-            # Colab 公式 API でインライン表示（X-Frame-Options を回避できる）
-            try:
-                _colab_out.serve_kernel_port_as_iframe(
-                    actual_port, height=f"{height}px", path="/"
-                )
-            except Exception:
-                # フォールバック: 通常の IFrame
-                from IPython.display import IFrame, display as ipy_display
-                ipy_display(IFrame(src=proxy_url, width="100%", height=height))
+            # trailing slash を除去
+            proxy_url = proxy_url.rstrip('/')
+            print(f"✅ ビューアー起動 → {proxy_url}/")
+            ipy_display(HTML(self._notebook_html(proxy_url, actual_port)))
+
         except ImportError:
             # Colab 外（ローカル実行）では URL を表示
             print(f"✅ ビューアー起動 → http://localhost:{actual_port}/")
