@@ -247,11 +247,11 @@ class FlaskViewer:
                 height=self.render_wh[1],
                 width=self.render_wh[0],
             )
-            print(f"✅ MuJoCo Renderer 初期化成功 (MUJOCO_GL={os.environ.get('MUJOCO_GL','未設定')})")
+            print(f"✅ MuJoCo Renderer 初期化成功 (MUJOCO_GL={os.environ.get('MUJOCO_GL','未設定')})", flush=True)
         except Exception as e:
-            print(f"❌ MuJoCo Renderer 初期化失敗: {e}")
-            print(f"   MUJOCO_GL={os.environ.get('MUJOCO_GL','未設定')}")
-            print("   → セットアップセルを再実行してランタイムを再起動してください")
+            print(f"❌ MuJoCo Renderer 初期化失敗: {e}", flush=True)
+            print(f"   MUJOCO_GL={os.environ.get('MUJOCO_GL','未設定')}", flush=True)
+            print("   → セットアップセルを再実行してランタイムを再起動してください", flush=True)
             self._frame_jpg = self._make_placeholder_jpg(f"レンダラーエラー: {type(e).__name__}")
 
         _err_count = 0
@@ -272,7 +272,7 @@ class FlaskViewer:
                     except Exception as e:
                         _err_count += 1
                         if _err_count <= 3:
-                            print(f"⚠  render error #{_err_count}: {e}")
+                            print(f"⚠  render error #{_err_count}: {e}", flush=True)
                         self._frame_jpg = self._make_placeholder_jpg(f"render error: {type(e).__name__}")
             elapsed = time.perf_counter() - t0
             time.sleep(max(0, interval - elapsed))
