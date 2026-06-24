@@ -207,8 +207,15 @@ class Go2WalkEnv(gym.Env):
     def _compute_reward(self, action: np.ndarray) -> float:
         cfg = self.reward_config
 
-        # 1. 線速度追跡（Gaussian）
-        lin_vel_body = self.data.qvel[:2]  # x,y 速度（近似: ワールドフレーム）
+        # 1. 線速度追跡（Gaussian）— body フレームに変換してから比較
+        # qvel[:3] は MuJoCo free joint のワールドフレーム線速度
+        qw, qx, qy, qz = self.data.qpos[3:7]
+        _R = np.array([
+            [1-2*(qy**2+qz**2), 2*(qx*qy+qw*qz),   2*(qx*qz-qw*qy)],
+            [2*(qx*qy-qw*qz),   1-2*(qx**2+qz**2),  2*(qy*qz+qw*qx)],
+            [2*(qx*qz+qw*qy),   2*(qy*qz-qw*qx),   1-2*(qx**2+qy**2)],
+        ])
+        lin_vel_body = (_R.T @ self.data.qvel[:3])[:2]  # body フレーム xy 速度
         lin_err = np.sum((self._vel_cmd[:2] - lin_vel_body) ** 2)
         r_lin = cfg.lin_vel_weight * float(np.exp(-lin_err / 0.25))
 
