@@ -48,8 +48,9 @@ VEL_CMD_RANGE = {
     "omega": (-1.0,  1.0),   # 回転 (rad/s 相当)
 }
 
-# 足のゼオム名（foot slip 計算用）
-FOOT_GEOM_NAMES = ["FR_foot", "FL_foot", "RR_foot", "RL_foot"]
+# 足ゼオム名（go2.xml / go2_posctrl.xml に定義されている <geom name="FR" ...> 等）
+# アクチュエータ順に合わせて FR, FL, RR, RL の順で並べる
+FOOT_GEOM_NAMES = ["FR", "FL", "RR", "RL"]
 
 
 class Go2WalkEnv(gym.Env):
@@ -252,7 +253,45 @@ class Go2WalkEnv(gym.Env):
         # 6. 足スリップペナルティ
         r_slip = self._foot_slip_penalty(cfg)
 
-        return r_lin + r_ang + r_orient + r_torque + r_rate + r_slip
+        # 7. トロット歩行リズム報酬（対角足が交互に着地）
+        r_gait = self._feet_gait_reward(cfg)
+
+        return r_lin + r_ang + r_orient + r_torque + r_rate + r_slip + r_gait
+
+    def _feet_gait_reward(self, cfg: WalkRewardConfig) -> float:
+        """トロット歩行リズム報酬。
+
+        対角足ペア (FR+RL, FL+RR) が交互に着地するリズムを参照波と比較して報酬を与える。
+        速度コマンドがほぼゼロの場合は全足着地が正解なのでスキップ。
+        """
+        if not self._foot_geom_ids or len(self._foot_geom_ids) < 4:
+            return 0.0
+
+        # 速度コマンドが小さい場合はスタンド静止が正解 → gait 報酬をスキップ
+        cmd_speed = float(np.linalg.norm(self._vel_cmd))
+        if cmd_speed < 0.1:
+            return 0.0
+
+        freq = 1.5  # トロット周波数 Hz
+        t = self._step_count * 0.01   # 制御周期 0.01s
+        phase = 2.0 * np.pi * freq * t
+
+        # 参照接触確率 [0,1]: FR と RL は同位相、FL と RR は逆位相
+        ref_fr_rl = 0.5 * (1.0 + np.sin(phase))   # FR, RL
+        ref_fl_rr = 0.5 * (1.0 - np.sin(phase))   # FL, RR
+
+        # _foot_geom_ids の順: FR=0, FL=1, RR=2, RL=3
+        refs = [ref_fr_rl, ref_fl_rr, ref_fl_rr, ref_fr_rl]
+
+        reward = 0.0
+        for geom_id, ref in zip(self._foot_geom_ids, refs):
+            in_contact = float(any(
+                c.geom1 == geom_id or c.geom2 == geom_id
+                for c in self.data.contact[:self.data.ncon]
+            ))
+            reward += ref * in_contact + (1.0 - ref) * (1.0 - in_contact)
+
+        return cfg.feet_gait_weight * reward / 4.0
 
     def _foot_slip_penalty(self, cfg: WalkRewardConfig) -> float:
         if not self._foot_geom_ids or cfg.foot_slip_weight == 0:
