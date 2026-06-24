@@ -1,7 +1,7 @@
 <!-- Web viewer walk scene: uses go2.xml (with OBJ visual meshes) for mjswan.
      Flat floor only (no walls / no oni). -->
 <mujoco model="go2_walk_web">
-  <include file="go2.xml"/>
+  <include file="go2_posctrl.xml"/>
 
   <statistic center="0 0 0.3" extent="1.5"/>
 

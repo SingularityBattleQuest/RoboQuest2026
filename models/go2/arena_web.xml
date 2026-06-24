@@ -1,6 +1,6 @@
 <!-- Web viewer arena: uses go2.xml (with OBJ visual meshes) for mjswan. -->
 <mujoco model="go2_arena_web">
-  <include file="go2.xml"/>
+  <include file="go2_posctrl.xml"/>
 
   <statistic center="0 0 0.3" extent="4"/>
 

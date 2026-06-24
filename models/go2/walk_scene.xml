@@ -1,5 +1,5 @@
 <mujoco model="go2_walk_scene">
-  <include file="go2.xml"/>
+  <include file="go2_posctrl.xml"/>
 
   <statistic center="0 0 0.3" extent="1.5"/>
 

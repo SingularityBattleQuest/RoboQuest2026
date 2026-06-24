@@ -32,11 +32,13 @@ STANDING_POS = np.array([
 ], dtype=np.float64)
 
 ACTION_SCALE = 0.3   # action * ACTION_SCALE + STANDING_POS = 目標関節角度
-KP = 20.0            # 位置ゲイン
-KD = 0.5             # 微分ゲイン
+# KP/KD は go2_posctrl.xml の <position kp=20> と joint damping=0.5 で設定済み。
+# 報酬計算用に定数として保持する。
+KP = 20.0
+KD = 0.5
 
 _MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "models", "go2")
-# go2.xml には床がないため walk_scene.xml（床付き）をデフォルトとして使用
+# walk_scene.xml → go2_posctrl.xml（位置制御）+ 床
 MODEL_XML = os.path.join(_MODEL_DIR, "walk_scene.xml")
 
 # 速度コマンドのサンプリング範囲
@@ -93,6 +95,16 @@ class Go2WalkEnv(gym.Env):
 
         self._last_action = np.zeros(12, dtype=np.float64)
         self._vel_cmd = np.zeros(3, dtype=np.float64)   # [vx, vy, omega]
+
+        # アクチュエータ順の qpos/dof アドレス（qpos 順序とアクチュエータ順序は異なる）
+        self._act_qposadr = np.array([
+            self.model.jnt_qposadr[self.model.actuator_trnid[i, 0]]
+            for i in range(self.model.nu)
+        ], dtype=int)
+        self._act_dofadr = np.array([
+            self.model.jnt_dofadr[self.model.actuator_trnid[i, 0]]
+            for i in range(self.model.nu)
+        ], dtype=int)
 
         # 足ゼオム ID の取得（foot slip 報酬用）
         self._foot_geom_ids = []
@@ -169,8 +181,9 @@ class Go2WalkEnv(gym.Env):
     def _get_obs(self) -> np.ndarray:
         ang_vel = self.data.qvel[3:6].copy()
         proj_grav = self._projected_gravity()
-        jpos = self.data.qpos[7:19] - STANDING_POS
-        jvel = self.data.qvel[6:18].copy()
+        # アクチュエータ順で取得してアクション空間と対応させる
+        jpos = self.data.qpos[self._act_qposadr] - STANDING_POS
+        jvel = self.data.qvel[self._act_dofadr]
         return np.concatenate([
             self._vel_cmd,
             ang_vel,
@@ -195,12 +208,11 @@ class Go2WalkEnv(gym.Env):
     # ── 制御 ─────────────────────────────────────────────────────────────
 
     def _apply_pd_control(self, action: np.ndarray) -> None:
+        # go2_posctrl.xml の <position kp=20> アクチュエータへ位置目標値を直接セット。
+        # PD計算(kp=20, kd=0.5)は MuJoCo 物理エンジン側が行う。
         q_target = STANDING_POS + action * ACTION_SCALE
-        q_cur = self.data.qpos[7:19]
-        dq_cur = self.data.qvel[6:18]
-        tau = KP * (q_target - q_cur) - KD * dq_cur
         limits = self.model.actuator_ctrlrange
-        self.data.ctrl[:] = np.clip(tau, limits[:, 0], limits[:, 1])
+        self.data.ctrl[:] = np.clip(q_target, limits[:, 0], limits[:, 1])
 
     # ── 報酬 ─────────────────────────────────────────────────────────────
 
@@ -228,8 +240,11 @@ class Go2WalkEnv(gym.Env):
         proj_grav = self._projected_gravity()
         r_orient = cfg.orientation_weight * float(np.sum(proj_grav[:2] ** 2))
 
-        # 4. トルクペナルティ
-        r_torque = cfg.torques_weight * float(np.sum(self.data.ctrl ** 2))
+        # 4. トルクペナルティ（実際のアクチュエータ力を使用）
+        # qfrc_actuator は DOF 順の一般化力。足関節 DOF は freejoint(6) の直後の 12 DOF ではなく
+        # _act_dofadr で指定されたアドレスにある。
+        actual_tau = self.data.qfrc_actuator[self._act_dofadr]
+        r_torque = cfg.torques_weight * float(np.sum(actual_tau ** 2))
 
         # 5. アクション変化ペナルティ
         r_rate = cfg.action_rate_weight * float(np.sum((action - self._last_action) ** 2))
