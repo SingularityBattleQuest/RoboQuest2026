@@ -1,7 +1,7 @@
-<!-- Web viewer walk scene: uses go2_simple.xml (no OBJ meshes) for browser.
-     Flat floor only (no walls / no oni). Safe to load in mujoco_wasm. -->
+<!-- Web viewer walk scene: uses go2.xml (with OBJ visual meshes) for mjswan.
+     Flat floor only (no walls / no oni). -->
 <mujoco model="go2_walk_web">
-  <include file="go2_simple.xml"/>
+  <include file="go2.xml"/>
 
   <statistic center="0 0 0.3" extent="1.5"/>
 
@@ -28,10 +28,5 @@
       contype="1" conaffinity="1"/>
   </worldbody>
 
-  <!-- Keyframe: robot home pose（19 qpos: 7 free + 12 joints） -->
-  <keyframe>
-    <key name="home"
-      qpos="0 0 0.27 1 0 0 0 0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8"
-      ctrl="0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8" />
-  </keyframe>
+  <!-- keyframe "home" は go2.xml 側で定義済み -->
 </mujoco>

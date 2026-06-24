@@ -1,7 +1,6 @@
-<!-- Web viewer arena: uses go2_simple.xml (no OBJ meshes) for browser compatibility.
-     Identical arena layout to arena.xml but safe to load in mujoco_wasm. -->
+<!-- Web viewer arena: uses go2.xml (with OBJ visual meshes) for mjswan. -->
 <mujoco model="go2_arena_web">
-  <include file="go2_simple.xml"/>
+  <include file="go2.xml"/>
 
   <statistic center="0 0 0.3" extent="4"/>
 
@@ -35,9 +34,9 @@
     </body>
   </worldbody>
 
-  <!-- Keyframe: robot home pose + oni at origin -->
+  <!-- Keyframe: robot home pose + oni at origin (go2.xml の "home" に oni 座標を追加) -->
   <keyframe>
-    <key name="home"
+    <key name="arena_home"
       qpos="0 0 0.27 1 0 0 0 0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8 0 0"
       ctrl="0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8" />
   </keyframe>
