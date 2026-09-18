@@ -29,8 +29,7 @@ def package_walk(folder, output):
                      if p.is_file() and '__pycache__' not in p.parts)
     files += [ROOT / name for name in ['requirements.txt', 'requirements-training.txt', 'setup.py',
         'notebooks/quickstart_ja.ipynb', 'notebooks/guide_and_experiments_ja.ipynb',
-        'notebooks/saved_walk_viewer_ja.ipynb', 'notebooks/tier1_simple_ja.ipynb',
-        'notebooks/tier2_advanced_ja.ipynb']]
+        'notebooks/saved_walk_viewer_ja.ipynb']]
     manifest = {}
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
         for file in sorted(set(files)):
