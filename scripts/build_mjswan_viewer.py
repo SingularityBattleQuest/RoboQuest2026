@@ -22,6 +22,7 @@ build_mjswan_viewer.py — mjswan を使って RoboQuest 2026 のブラウザビ
 from __future__ import annotations
 
 import os
+import json
 import sys
 from pathlib import Path
 from typing import Optional
@@ -131,7 +132,17 @@ def _make_walk_obs():
     })  # 合計 45次元
 
 
-def _make_walk_action():
+def _walk_action_scale(onnx_path):
+    contract_path = Path(onnx_path).parent / 'walk_policy_contract.json'
+    if not contract_path.exists():
+        return ACTION_SCALE
+    contract = json.loads(contract_path.read_text())
+    if abs(contract.get('control_dt', .02) - .02) > 1e-9:
+        raise ValueError('このビューアーは50Hzで学習したモデル用です。')
+    return float(contract['action_scale'])
+
+
+def _make_walk_action(action_scale=ACTION_SCALE, joint_stiffness=KP, joint_damping=KD):
     """Walk ポリシーのアクション定義（KP/KD/scale を訓練時と一致させる）。
 
     訓練時: q_target = STANDING_POS + action * 0.3 → PD 制御 (KP=20, KD=0.5)
@@ -146,11 +157,34 @@ def _make_walk_action():
     # 「no joints matched patterns」で action term ごと無視され、ロボットが動かない。
     return JointPositionActionCfg(
         actuator_names=tuple(JOINT_NAMES),
-        scale=ACTION_SCALE,
-        stiffness=KP,
-        damping=KD,
+        scale=action_scale,
+        stiffness=joint_stiffness,
+        damping=joint_damping,
         use_default_offset=True,
     )
+
+
+def _saved_walk_action(onnx_path):
+    path = Path(onnx_path).parent / 'walk_policy_contract.json'
+    contract = json.loads(path.read_text()) if path.exists() else {}
+    return _make_walk_action(_walk_action_scale(onnx_path),
+                            contract.get('joint_stiffness', KP), contract.get('joint_damping', KD))
+
+
+def _configure_walk_scene(spec, onnx_path):
+    """Apply saved physical gains to the actual position actuators in the scene."""
+    path = Path(onnx_path).parent / 'walk_policy_contract.json'
+    contract = json.loads(path.read_text()) if path.exists() else {}
+    kp, kd = contract.get('joint_stiffness', KP), contract.get('joint_damping', KD)
+    limits = contract.get('torque_limits')
+    for index, name in enumerate(JOINT_NAMES):
+        actuator = spec.actuator(name.removesuffix('_joint'))
+        actuator.gainprm[0] = kp
+        actuator.biasprm[1] = -kp
+        spec.joint(name).damping[0] = kd
+        if limits is not None:
+            actuator.forcelimited = 1
+            actuator.forcerange[:] = [-limits[index % 3], limits[index % 3]]
 
 
 def _make_velocity_command():
@@ -238,11 +272,12 @@ def build_walk(
     import mjswan
 
     walk_onnx_path = _ensure_normalized_onnx(Path(walk_onnx_path))
-    output_dir     = Path(output_dir)
+    output_dir     = Path(output_dir).resolve()
 
     print(f"🔧 Walk ビューアーをビルド中... ({walk_onnx_path.name})")
-    # walk_web.xml = go2_simple（メッシュなし）+ 床（ブラウザ互換）
+    # walk_web.xml は学習と同じ go2_posctrl.xml と床の物理設定を使う。
     spec   = mujoco.MjSpec.from_file(str(ROOT / "models" / "go2" / "walk_web.xml"))
+    _configure_walk_scene(spec, walk_onnx_path)
     policy = onnx.load(str(walk_onnx_path))
 
     builder = mjswan.Builder()
@@ -254,7 +289,7 @@ def build_walk(
             name="Walk Policy",
             policy=policy,
             observations={"policy": _make_walk_obs()},
-            actions={"joint_pos": _make_walk_action()},
+            actions={"joint_pos": _saved_walk_action(walk_onnx_path)},
             policy_joint_names=JOINT_NAMES,
             default_joint_pos=STANDING_POS,
             commands={VELOCITY_COMMAND_NAME: _make_velocity_command()},
@@ -280,11 +315,12 @@ def build_flee(
     import mjswan
 
     walk_onnx_path = _ensure_normalized_onnx(Path(walk_onnx_path))
-    output_dir     = Path(output_dir)
+    output_dir     = Path(output_dir).resolve()
 
     print(f"🔧 Flee ビューアーをビルド中... ({walk_onnx_path.name})")
     # arena_web.xml = go2_simple（メッシュなし）+ 壁 + 鬼ボディ
     spec   = mujoco.MjSpec.from_file(str(ROOT / "models" / "go2" / "arena_web.xml"))
+    _configure_walk_scene(spec, walk_onnx_path)
     # ブラウザ側は keyframe 0 でリセットするので arena_home を先頭に持ってくる
     _select_reset_keyframe(spec, keep="arena_home")
     policy = onnx.load(str(walk_onnx_path))
@@ -307,7 +343,7 @@ def build_flee(
             name="Walk Policy (Manual)",
             policy=policy,
             observations={"policy": _make_walk_obs()},
-            actions={"joint_pos": _make_walk_action()},
+            actions={"joint_pos": _saved_walk_action(walk_onnx_path)},
             policy_joint_names=JOINT_NAMES,
             default_joint_pos=STANDING_POS,
             commands={VELOCITY_COMMAND_NAME: _make_velocity_command()},

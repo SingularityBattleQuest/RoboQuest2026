@@ -17,22 +17,36 @@ class WalkRewardConfig:
     """
     # ── 速度追跡（主目標） ─────────────────────────────────────────────
     # コマンド速度への追従（Gaussian 報酬: exp(-error/std)）
+    linear_tracking_variance: float = .25
+    angular_tracking_variance: float = .5
     lin_vel_weight: float = 1.0    # 線速度追跡の重み
     ang_vel_weight: float = 0.5    # 角速度追跡の重み
 
     # ── 安定性ペナルティ ───────────────────────────────────────────────
     # 重力ベクトルの傾き（xy 成分の二乗和）
     orientation_weight: float = -1.0
+    base_height_target: float = .26
+    base_height_weight: float = 0.0
+    vertical_velocity_weight: float = 0.0
+    # 足先以外で床を支えない。膝の高さは床から関節中心まで。
+    nonfoot_contact_weight: float = 0.0
+    knee_height_target: float = .10
+    knee_height_weight: float = 0.0
 
     # ── エネルギー効率ペナルティ ───────────────────────────────────────
     # トルクの二乗和（省エネ）
     torques_weight: float = -2.5e-5
     # アクション変化の二乗和（滑らかな動き）
     action_rate_weight: float = -0.05
+    # 実際の関節速度を抑え、細かい高速な足踏みを減らす。
+    joint_velocity_weight: float = 0.0
+    stand_joint_velocity_weight: float = 0.0
 
     # ── 歩行品質報酬 ───────────────────────────────────────────────────
     # トロット歩行リズム（対角足交互着地）: 大きいほど歩行らしさを重視
     feet_gait_weight: float = 0.5
+    # 時刻を使わず、対角2脚の支持を促す（比較実験用）。
+    diagonal_support_weight: float = 0.0
     # 接触中の足水平速度（スリップ防止）
     foot_slip_weight: float = -0.1
 
@@ -44,7 +58,7 @@ class WalkRewardConfig:
 class FleeRewardConfig:
     """鬼ごっこ（高レベルポリシー）用報酬。
 
-    Tier1 のスライダーパラメータがこのクラスに対応。
+    クイックスタート編 のスライダーパラメータがこのクラスに対応。
     """
     # 毎ステップの生存ボーナス（生き延びることへの報酬）
     survival_weight: float = 0.5

@@ -43,3 +43,13 @@ webapp/models/
 
 # 一時ファイル
 /tmp/
+
+# Local training runtime
+.venv/
+
+# Generated local training previews and transfer bundles
+/artifacts/
+
+# Verified walking policy distributed with the Colab notebooks
+!models/pretrained/smooth_walk/walk_model.zip
+!models/pretrained/smooth_walk/walk_model_vecnorm.pkl

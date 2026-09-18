@@ -31,6 +31,8 @@ STANDING_POS = np.array([
     0.0,  0.9, -1.8,
 ], dtype=np.float64)
 
+CONTROL_DT = 0.02  # 50 Hz; shared by local training and Colab
+
 ACTION_SCALE = 0.3   # action * ACTION_SCALE + STANDING_POS = 目標関節角度
 # KP/KD は go2_posctrl.xml の <position kp=20> と joint damping=0.5 で設定済み。
 # 報酬計算用に定数として保持する。
@@ -74,17 +76,35 @@ class Go2WalkEnv(gym.Env):
         render_mode: Optional[str] = None,
         xml_path: Optional[str] = None,
         randomize_cmd: bool = True,
+        command_ranges: Optional[dict] = None,
+        action_scale: float = ACTION_SCALE,
+        command_mode: str = "uniform",
+        joint_stiffness: float = KP,
+        joint_damping: float = KD,
+        torque_limits: Optional[list] = None,
     ):
         super().__init__()
         self.reward_config = reward_config or WalkRewardConfig()
+        if min(self.reward_config.linear_tracking_variance, self.reward_config.angular_tracking_variance) <= 0:
+            raise ValueError("Tracking variances must be positive")
+        if not np.isfinite(action_scale) or action_scale <= 0:
+            raise ValueError("action_scale must be finite and positive")
         self.max_episode_steps = max_episode_steps
         self.render_mode = render_mode
+        if command_mode not in {"uniform", "axis"}:
+            raise ValueError("command_mode must be uniform or axis")
+        self.command_mode = command_mode
+        self.action_scale = float(action_scale)
         self.randomize_cmd = randomize_cmd
+        self.command_ranges = dict(VEL_CMD_RANGE if command_ranges is None else command_ranges)
         self._step_count = 0
 
         xml = xml_path or MODEL_XML
         self.model = mujoco.MjModel.from_xml_path(xml)
         self.data = mujoco.MjData(self.model)
+        self.frame_skip = round(CONTROL_DT / self.model.opt.timestep)
+        if not np.isclose(self.frame_skip * self.model.opt.timestep, CONTROL_DT):
+            raise ValueError("Physics timestep must divide CONTROL_DT")
 
         obs_dim = 3 + 3 + 3 + 12 + 12 + 12  # = 45
         self.observation_space = spaces.Box(
@@ -106,6 +126,20 @@ class Go2WalkEnv(gym.Env):
             self.model.jnt_dofadr[self.model.actuator_trnid[i, 0]]
             for i in range(self.model.nu)
         ], dtype=int)
+        if not np.isfinite(joint_stiffness) or joint_stiffness <= 0:
+            raise ValueError('joint_stiffness must be finite and positive')
+        if not np.isfinite(joint_damping) or joint_damping < 0:
+            raise ValueError('joint_damping must be finite and nonnegative')
+        self.model.actuator_gainprm[:, 0] = joint_stiffness
+        self.model.actuator_biasprm[:, 1] = -joint_stiffness
+        self.model.dof_damping[self._act_dofadr] = joint_damping
+        if torque_limits is not None:
+            limits = np.asarray(torque_limits, dtype=float)
+            if limits.shape != (3,) or not np.all(np.isfinite(limits)) or np.any(limits <= 0):
+                raise ValueError('torque_limits must contain positive hip/thigh/calf limits')
+            limits = np.tile(limits, 4)
+            self.model.actuator_forcelimited[:] = True
+            self.model.actuator_forcerange[:] = np.stack([-limits, limits], axis=1)
 
         # 足ゼオム ID の取得（foot slip 報酬用）
         self._foot_geom_ids = []
@@ -118,6 +152,25 @@ class Go2WalkEnv(gym.Env):
             self._renderer = mujoco.Renderer(self.model, height=480, width=640)
         else:
             self._renderer = None
+
+        self._knee_body_ids = [self.model.body(name + "_calf").id
+                               for name in FOOT_GEOM_NAMES]
+
+    def posture_metrics(self):
+        """Flat-floor clearance/contact diagnostics shared by reward and evaluation."""
+        nonfoot = set()
+        for contact in self.data.contact[:self.data.ncon]:
+            a, b = int(contact.geom1), int(contact.geom2)
+            if self.model.geom_bodyid[a] == 0:
+                robot = b
+            elif self.model.geom_bodyid[b] == 0:
+                robot = a
+            else:
+                continue
+            if robot not in self._foot_geom_ids and contact.dist <= 0:
+                nonfoot.add(robot)
+        return {"nonfoot_contacts": len(nonfoot),
+                "knee_heights": self.data.xpos[self._knee_body_ids, 2].copy()}
 
     # ── 公開 API ─────────────────────────────────────────────────────────
 
@@ -133,15 +186,19 @@ class Go2WalkEnv(gym.Env):
         self.data.qpos[:] = self.model.key_qpos[0]
         self.data.qpos[7:19] += self.np_random.uniform(-0.05, 0.05, 12)
         self.data.qvel[:] = 0.0
+        self.data.ctrl[:] = self.model.key_ctrl[0]
         mujoco.mj_forward(self.model, self.data)
 
         # 速度コマンドをランダムサンプリング
         if self.randomize_cmd:
             self._vel_cmd = np.array([
-                self.np_random.uniform(*VEL_CMD_RANGE["vx"]),
-                self.np_random.uniform(*VEL_CMD_RANGE["vy"]),
-                self.np_random.uniform(*VEL_CMD_RANGE["omega"]),
+                self.np_random.uniform(*self.command_ranges["vx"]),
+                self.np_random.uniform(*self.command_ranges["vy"]),
+                self.np_random.uniform(*self.command_ranges["omega"]),
             ], dtype=np.float64)
+            if self.command_mode == "axis":
+                axis = self.np_random.choice([-1, 0, 1, 2], p=[.1, .4, .25, .25])
+                self._vel_cmd[np.arange(3) != axis] = 0.
 
         self._step_count = 0
         self._last_action = np.zeros(12, dtype=np.float64)
@@ -151,12 +208,11 @@ class Go2WalkEnv(gym.Env):
         action = np.clip(action, -1.0, 1.0)
         self._apply_pd_control(action)
 
-        # 物理サブステップ（制御周期 0.02s, substep 5回）
-        for _ in range(5):
+        # 物理刻みから50 Hzの制御周期を計算する。
+        for _ in range(self.frame_skip):
             mujoco.mj_step(self.model, self.data)
 
         self._step_count += 1
-        obs = self._get_obs().astype(np.float32)
         reward = self._compute_reward(action)
         terminated = self._is_terminated()
         truncated = self._step_count >= self.max_episode_steps
@@ -165,6 +221,7 @@ class Go2WalkEnv(gym.Env):
             reward -= self.reward_config.fall_penalty
 
         self._last_action = action.copy()
+        obs = self._get_obs().astype(np.float32)
         return obs, reward, terminated, truncated, {}
 
     def render(self):
@@ -196,22 +253,19 @@ class Go2WalkEnv(gym.Env):
 
     def _projected_gravity(self) -> np.ndarray:
         """重力ベクトル [0,0,-1] をボディフレームに回転。"""
-        qw, qx, qy, qz = self.data.qpos[3:7]
-        gravity_world = np.array([0.0, 0.0, -1.0])
-        # 四元数の逆回転: R^T @ gravity_world
-        R = np.array([
-            [1-2*(qy**2+qz**2),  2*(qx*qy+qw*qz),  2*(qx*qz-qw*qy)],
-            [2*(qx*qy-qw*qz),  1-2*(qx**2+qz**2),   2*(qy*qz+qw*qx)],
-            [2*(qx*qz+qw*qy),    2*(qy*qz-qw*qx),  1-2*(qx**2+qy**2)],
-        ])
-        return R.T @ gravity_world
+        return self._world_to_body(np.array([0.0, 0.0, -1.0]))
+
+    def _world_to_body(self, vector: np.ndarray) -> np.ndarray:
+        rotation = np.empty(9)
+        mujoco.mju_quat2Mat(rotation, self.data.qpos[3:7])
+        return rotation.reshape(3, 3).T @ vector
 
     # ── 制御 ─────────────────────────────────────────────────────────────
 
     def _apply_pd_control(self, action: np.ndarray) -> None:
-        # go2_posctrl.xml の <position kp=20> アクチュエータへ位置目標値を直接セット。
-        # PD計算(kp=20, kd=0.5)は MuJoCo 物理エンジン側が行う。
-        q_target = STANDING_POS + action * ACTION_SCALE
+        # 位置目標をアクチュエータへ渡す。保存済みのゲイン・力の上限を
+        # 設定した MuJoCo モデルが位置制御を行う（既定値 kp=20, kd=0.5）。
+        q_target = STANDING_POS + action * self.action_scale
         limits = self.model.actuator_ctrlrange
         self.data.ctrl[:] = np.clip(q_target, limits[:, 0], limits[:, 1])
 
@@ -222,20 +276,14 @@ class Go2WalkEnv(gym.Env):
 
         # 1. 線速度追跡（Gaussian）— body フレームに変換してから比較
         # qvel[:3] は MuJoCo free joint のワールドフレーム線速度
-        qw, qx, qy, qz = self.data.qpos[3:7]
-        _R = np.array([
-            [1-2*(qy**2+qz**2), 2*(qx*qy+qw*qz),   2*(qx*qz-qw*qy)],
-            [2*(qx*qy-qw*qz),   1-2*(qx**2+qz**2),  2*(qy*qz+qw*qx)],
-            [2*(qx*qz+qw*qy),   2*(qy*qz-qw*qx),   1-2*(qx**2+qy**2)],
-        ])
-        lin_vel_body = (_R.T @ self.data.qvel[:3])[:2]  # body フレーム xy 速度
+        lin_vel_body = self._world_to_body(self.data.qvel[:3])[:2]
         lin_err = np.sum((self._vel_cmd[:2] - lin_vel_body) ** 2)
-        r_lin = cfg.lin_vel_weight * float(np.exp(-lin_err / 0.25))
+        r_lin = cfg.lin_vel_weight * float(np.exp(-lin_err / cfg.linear_tracking_variance))
 
         # 2. 角速度追跡（Gaussian）
         ang_vel_z = self.data.qvel[5]
         ang_err = (self._vel_cmd[2] - ang_vel_z) ** 2
-        r_ang = cfg.ang_vel_weight * float(np.exp(-ang_err / 0.5))
+        r_ang = cfg.ang_vel_weight * float(np.exp(-ang_err / cfg.angular_tracking_variance))
 
         # 3. 姿勢ペナルティ（重力方向の xy 傾き）
         proj_grav = self._projected_gravity()
@@ -249,14 +297,35 @@ class Go2WalkEnv(gym.Env):
 
         # 5. アクション変化ペナルティ
         r_rate = cfg.action_rate_weight * float(np.sum((action - self._last_action) ** 2))
+        velocity_weight = cfg.joint_velocity_weight
+        if np.linalg.norm(self._vel_cmd) < .05:
+            velocity_weight += cfg.stand_joint_velocity_weight
+        r_rate += velocity_weight * float(np.sum(self.data.qvel[self._act_dofadr] ** 2))
 
         # 6. 足スリップペナルティ
         r_slip = self._foot_slip_penalty(cfg)
 
         # 7. トロット歩行リズム報酬（対角足が交互に着地）
         r_gait = self._feet_gait_reward(cfg)
+        if cfg.diagonal_support_weight and np.linalg.norm(self._vel_cmd) >= .1:
+            contacts = [any(c.geom1 == gid or c.geom2 == gid
+                           for c in self.data.contact[:self.data.ncon])
+                        for gid in self._foot_geom_ids]
+            if len(contacts) == 4:
+                fr, fl, rr, rl = contacts
+                r_gait += cfg.diagonal_support_weight * float(
+                    (fr and rl and not fl and not rr) or
+                    (fl and rr and not fr and not rl))
 
-        return r_lin + r_ang + r_orient + r_torque + r_rate + r_slip + r_gait
+        r_height = cfg.base_height_weight * float((self.data.qpos[2] - cfg.base_height_target) ** 2)
+        r_vertical = cfg.vertical_velocity_weight * float(self.data.qvel[2] ** 2)
+        r_posture = 0.
+        if cfg.nonfoot_contact_weight or cfg.knee_height_weight:
+            posture = self.posture_metrics()
+            r_posture = cfg.nonfoot_contact_weight * posture['nonfoot_contacts']
+            r_posture += cfg.knee_height_weight * float(np.sum(
+                np.maximum(cfg.knee_height_target - posture['knee_heights'], 0.) ** 2))
+        return r_lin + r_ang + r_orient + r_torque + r_rate + r_slip + r_gait + r_height + r_vertical + r_posture
 
     def _feet_gait_reward(self, cfg: WalkRewardConfig) -> float:
         """トロット歩行リズム報酬。
@@ -264,7 +333,7 @@ class Go2WalkEnv(gym.Env):
         対角足ペア (FR+RL, FL+RR) が交互に着地するリズムを参照波と比較して報酬を与える。
         速度コマンドがほぼゼロの場合は全足着地が正解なのでスキップ。
         """
-        if not self._foot_geom_ids or len(self._foot_geom_ids) < 4:
+        if cfg.feet_gait_weight == 0 or len(self._foot_geom_ids) < 4:
             return 0.0
 
         # 速度コマンドが小さい場合はスタンド静止が正解 → gait 報酬をスキップ
@@ -273,7 +342,7 @@ class Go2WalkEnv(gym.Env):
             return 0.0
 
         freq = 1.5  # トロット周波数 Hz
-        t = self._step_count * 0.01   # 制御周期 0.01s
+        t = self.data.time
         phase = 2.0 * np.pi * freq * t
 
         # 参照接触確率 [0,1]: FR と RL は同位相、FL と RR は逆位相
@@ -298,7 +367,6 @@ class Go2WalkEnv(gym.Env):
             return 0.0
         penalty = 0.0
         for geom_id in self._foot_geom_ids:
-            body_id = self.model.geom_bodyid[geom_id]
             # 接触チェック
             in_contact = any(
                 c.geom1 == geom_id or c.geom2 == geom_id
@@ -309,7 +377,7 @@ class Go2WalkEnv(gym.Env):
                 foot_vel = np.zeros(6)
                 mujoco.mj_objectVelocity(
                     self.model, self.data,
-                    mujoco.mjtObj.mjOBJ_BODY, body_id, foot_vel, 0
+                    mujoco.mjtObj.mjOBJ_GEOM, geom_id, foot_vel, 0
                 )
                 slip = float(np.sum(foot_vel[3:5] ** 2))
                 penalty += slip

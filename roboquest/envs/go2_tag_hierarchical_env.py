@@ -16,6 +16,8 @@
     # あとは通常の Gymnasium 環境と同じ
 """
 import os
+import json
+from pathlib import Path
 import pickle
 
 from typing import Optional, List
@@ -74,10 +76,16 @@ class Go2TagHierarchicalEnv(gym.Env):
         self.n_low_steps = n_low_steps
         self._step_count = 0
 
+        # Carry the trained action range into the hierarchical simulation.
+        params_path = Path(low_level_model_path).parent / 'walk_params.json'
+        walk_params = json.loads(params_path.read_text()) if params_path.exists() else {}
+        walk_env_kwargs = walk_params.get('walk_env_kwargs', {})
+
         # 低レベル環境（物理シミュレーション本体）
         self._low_env = Go2WalkEnv(
             xml_path=ARENA_XML,
             randomize_cmd=False,
+            **walk_env_kwargs,
         )
         self.model = self._low_env.model
         self.data = self._low_env.data

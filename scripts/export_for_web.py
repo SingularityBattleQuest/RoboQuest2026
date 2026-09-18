@@ -144,7 +144,18 @@ def export_normalized_policy_onnx(
         print(f"  VecNormalize not found ({vecnorm_path}), exporting without normalization")
         wrapper = DeterministicPolicyONNX(model.policy)
 
-    return _onnx_export(wrapper, obs_dim, output_path)
+    result = _onnx_export(wrapper, obs_dim, output_path)
+    if obs_dim == 45:
+        params_path = model_path.parent / 'walk_params.json'
+        params = json.loads(params_path.read_text()) if params_path.exists() else {}
+        from roboquest.envs.go2_walk_env import ACTION_SCALE, CONTROL_DT
+        contract = dict(action_scale=params.get('walk_env_kwargs', {}).get('action_scale', ACTION_SCALE),
+                        control_dt=params.get('control_dt', CONTROL_DT),
+                        environment_revision=params.get('environment_revision'))
+        for key, default in [('joint_stiffness', 20.), ('joint_damping', .5), ('torque_limits', None)]:
+            contract[key] = params.get('walk_env_kwargs', {}).get(key, default)
+        (output_path.parent / 'walk_policy_contract.json').write_text(json.dumps(contract, indent=2))
+    return result
 
 
 def export_vecnorm_stats(vecnorm_path: str | Path, output_path: str | Path) -> Optional[Path]:

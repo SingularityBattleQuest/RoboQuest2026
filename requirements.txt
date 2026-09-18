@@ -1,3 +1,5 @@
+-c requirements-training.txt
+
 # MuJoCo 物理シミュレーター
 # ※ mjswan==0.8.2 が mujoco==3.8.1 を pin するため、実際は 3.8.1 が入る
 mujoco>=3.1.0
@@ -17,7 +19,8 @@ onnxruntime>=1.17.0
 # 同居できないため 0.8.2 に固定する。
 # mjswan の wheel は Requires-Python が <3.13 と宣言されているが、中身は純 Python +
 # ビルド済みフロントエンドで、依存（mujoco==3.8.1 / onnx）にも cp313 wheel があるため
-# Python 3.13 でも動作する。3.13 では pip が候補から外してしまうので、
+# Python 3.13 ではメーカーの対応宣言外。ローカル検証は Python 3.12 で実施。
+# 3.13 では pip が候補から外してしまうので、
 #   pip install --ignore-requires-python "mjswan==0.8.2"
 # のように別途インストールすること（setup_colab.sh とノートブックは自動で行う）。
 mjswan==0.8.2; python_version < "3.13"
@@ -30,4 +33,5 @@ imageio-ffmpeg>=0.4.9
 
 # ユーティリティ
 tqdm>=4.66.0
+rich>=13.0.0
 pandas>=2.0.0

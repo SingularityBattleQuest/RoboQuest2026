@@ -12,10 +12,12 @@
 
 RoboQuest 2026 is a reinforcement learning competition platform where Japanese high school students train a Unitree Go2 quadruped robot to **escape from an "oni" (demon) for 60 seconds** inside a 5×5m walled arena. Everything runs serverless in Google Colab — no local setup required.
 
-### Learning Flow (notebook: `notebooks/tier1_simple_ja.ipynb`)
+### Learning Flow (notebook: `notebooks/quickstart_ja.ipynb`)
 1. **Phase 1 (Walk):** Student tunes reward weights → PPO trains `Go2WalkEnv` → walk policy saved
 2. **Phase 2 (Flee):** Student tunes reward weights → PPO trains `Go2TagHierarchicalEnv` → flee policy saved
-3. **Phase 3 (View):** `FlaskViewer` displays real-time MuJoCo simulation inline in the notebook
+3. **Phase 3 (View/Evaluate):** mjswan displays the walk policy with manual velocity commands; `evaluate_flee` runs the saved hierarchy with frozen normalization and fixed evaluation seeds.
+
+`notebooks/guide_and_experiments_ja.ipynb` uses the same workflow with explanations and experiments. Shared training, persistence, and evaluation live in `scripts/notebook_workflow.py`. Both notebooks save to `MyDrive/RoboQuest2026/{team_name}/{experiment_name}`.
 
 ---
 
@@ -42,8 +44,8 @@ RoboQuest2026/
 │       └── visualization.py        # (legacy)
 │
 ├── notebooks/
-│   ├── tier1_simple_ja.ipynb        # ★ MAIN NOTEBOOK — student-facing, JP
-│   └── tier2_advanced_ja.ipynb      # Advanced notebook
+│   ├── quickstart_ja.ipynb        # ★ MAIN NOTEBOOK — student-facing, JP
+│   └── guide_and_experiments_ja.ipynb      # Explained workflow and experiments
 │
 ├── scripts/
 │   ├── download_models.py           # Downloads Go2 MJCF + mesh assets
