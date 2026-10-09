@@ -57,3 +57,32 @@ def test_notebooks_use_isolated_setup_and_viewers():
         assert 'from scripts.preview_saved_walk import' not in code
         assert 'str(TRAINING_PYTHON)' in code
         assert '_changed_loaded' not in code
+
+
+def test_setup_bootstraps_only_the_venv(monkeypatch, tmp_path):
+    from scripts import colab_runtime as runtime
+    target = tmp_path / 'venv'
+    monkeypatch.setattr(runtime, 'ENV', target)
+    monkeypatch.setattr(runtime, 'PYTHON', target/'bin/python')
+    created, commands = [], []
+    class Builder:
+        def __init__(self, **kwargs):
+            assert kwargs == {'with_pip': False}
+        def create(self, path):
+            created.append(path)
+    monkeypatch.setattr(runtime.venv, 'EnvBuilder', Builder)
+    monkeypatch.setattr(runtime, 'run_logged', commands.append)
+    runtime.prepare_runtime()
+    assert created == [target]
+    assert commands[0][:5] == [sys.executable, '-m', 'pip', '--python', str(target/'bin/python')]
+    assert all(command[0] == str(target/'bin/python') for command in commands[1:])
+    assert all('--system-site-packages' not in command for command in commands)
+
+
+def test_worker_environment_does_not_inherit_package_paths(monkeypatch):
+    from scripts.colab_runtime import worker_env
+    monkeypatch.setenv('PYTHONPATH', '/host-packages')
+    monkeypatch.setenv('PYTHONHOME', '/host-python')
+    env = worker_env()
+    assert 'PYTHONPATH' not in env and 'PYTHONHOME' not in env
+    assert env['PYTHONNOUSERSITE'] == '1'
