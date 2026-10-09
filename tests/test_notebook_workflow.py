@@ -44,6 +44,25 @@ def test_evaluation_requires_walk_normalization(tmp_path):
         evaluate_flee(tmp_path)
 
 
+def test_bundled_walk_stands_in_hierarchical_arena():
+    """A position policy must not be sent to the legacy torque actuators."""
+    import mujoco
+    from roboquest.envs.go2_tag_hierarchical_env import Go2TagHierarchicalEnv
+    folder = Path(__file__).resolve().parents[1] / 'models/pretrained/smooth_walk'
+    env = Go2TagHierarchicalEnv(str(folder / 'walk_model'),
+                              str(folder / 'walk_model_vecnorm.pkl'), oni_speed=0.)
+    try:
+        assert np.all(env.model.actuator_biastype == mujoco.mjtBias.mjBIAS_AFFINE)
+        for seed in (100, 101, 102):
+            env.reset(seed=seed)
+            for _ in range(25):
+                _, _, terminated, truncated, _ = env.step(np.zeros(3, dtype=np.float32))
+                assert not terminated and not truncated
+                assert env.data.qpos[2] > .2
+    finally:
+        env.close()
+
+
 def test_resume_preserves_physics_and_export_contract(tmp_path):
     import json
     from scripts.preview_saved_walk import preview_saved_walk

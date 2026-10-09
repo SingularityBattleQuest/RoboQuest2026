@@ -35,6 +35,8 @@ from roboquest.envs.go2_walk_env import Go2WalkEnv, STANDING_POS, ACTION_SCALE, 
 from roboquest.utils.reward_utils import FleeRewardConfig
 
 # 高レベル1ステップあたりの低レベルステップ数
+POSITION_ARENA_XML = str(Path(ARENA_XML).with_name("arena_posctrl.xml"))
+
 N_LOW_STEPS = 10  # 高レベル 5Hz、低レベル 50Hz
 
 
@@ -46,7 +48,7 @@ class Go2TagHierarchicalEnv(gym.Env):
 
     高レベル観測 (10次元):
       [0:2]  鬼への相対位置 dx, dy
-      [1]    鬼までの距離
+      [2]    鬼までの距離
       [3:6]  ロボットの角速度 xyz
       [6:9]  重力方向ベクトル（姿勢）
       [9]    残り時間（正規化: 1.0→0.0）
@@ -83,7 +85,7 @@ class Go2TagHierarchicalEnv(gym.Env):
 
         # 低レベル環境（物理シミュレーション本体）
         self._low_env = Go2WalkEnv(
-            xml_path=ARENA_XML,
+            xml_path=POSITION_ARENA_XML,
             randomize_cmd=False,
             **walk_env_kwargs,
         )
