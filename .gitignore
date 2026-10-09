@@ -53,3 +53,6 @@ webapp/models/
 # Verified walking policy distributed with the Colab notebooks
 !models/pretrained/smooth_walk/walk_model.zip
 !models/pretrained/smooth_walk/walk_model_vecnorm.pkl
+
+# Isolated Colab training environment
+.venv-colab/

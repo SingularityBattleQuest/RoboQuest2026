@@ -53,7 +53,7 @@ def test_failed_export_worker_keeps_model_and_blocks_stale_viewer(cells, tmp_pat
                     "import os; print('export worker failed', flush=True); os._exit(7)"], **kwargs)
 
     monkeypatch.setattr(subprocess, 'run', failed_worker)
-    context = dict(SAVE_DIR=tmp_path, walk_export_ready=True)
+    context = dict(SAVE_DIR=tmp_path, walk_export_ready=True, TRAINING_PYTHON=sys.executable)
     with pytest.raises(RuntimeError, match='終了コード 7'):
         exec(cell(cells, 'ビューアー用に変換'), context)
     assert source.read_bytes() == b'saved model must survive'
@@ -68,7 +68,7 @@ def test_export_cell_runs_real_saved_model(cells, tmp_path, monkeypatch):
     load_bundled_walk(tmp_path, ROOT / 'models/pretrained/smooth_walk')
     source = cell(cells, 'ビューアー用に変換').replace(
         "'/content/RoboQuest2026/webapp/models'", repr(str(tmp_path / 'web')))
-    context = dict(SAVE_DIR=tmp_path)
+    context = dict(SAVE_DIR=tmp_path, TRAINING_PYTHON=sys.executable)
     exec(source, context)
     assert context['walk_export_ready']
     assert (tmp_path / 'web/walk_policy_normalized.onnx').is_file()
