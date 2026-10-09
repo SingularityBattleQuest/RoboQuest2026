@@ -38,6 +38,7 @@ def evaluate(folder, seeds=(100, 101, 102), seconds=20, commands=None):
             for seed in seeds:
                 raw.set_vel_cmd(*command)
                 obs, _ = raw.reset(seed=seed)
+                start_position = raw.data.qpos[:2].copy()
                 velocities, tilts, heights, vertical_speeds = [], [], [], []
                 nonfoot_contacts, hind_knee_heights = [], []
                 all_nonfoot_contacts, all_hind_knee_heights = [], []
@@ -73,7 +74,10 @@ def evaluate(folder, seeds=(100, 101, 102), seconds=20, commands=None):
                     frequencies = np.fft.rfftfreq(len(centered), CONTROL_DT)
                     band = (frequencies >= .5) & (frequencies <= 12.)
                     dominant_frequency = float(frequencies[band][np.argmax(power[band])])
+                displacement = raw.data.qpos[:2] - start_position
                 rows.append(dict(command=name, seed=seed, fell=fell,
+                    displacement_xy_m=displacement.tolist(),
+                    distance_m=float(np.linalg.norm(displacement)),
                     seconds=(step+1)*CONTROL_DT, target=list(command),
                     mean_velocity=np.mean(values, axis=0).tolist(),
                     velocity_rmse=np.sqrt(np.mean((values-command)**2, axis=0)).tolist(),
