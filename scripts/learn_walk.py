@@ -18,7 +18,7 @@ def qualify_walk(folder):
     # These holdouts are not used to fit or select model weights.
     fixed = evaluate(folder, seeds=(100, 101, 102), seconds=20,
                      commands={'stand': (0., 0., 0.), 'forward': (.4, 0., 0.)})
-    transitions = evaluate_transitions(folder, seeds=(200, 203, 209), seconds=20)
+    transitions = evaluate_transitions(folder, seeds=(200, 203, 209), seconds=20, verbose=False)
     gait = all(row['distance_m'] >= 5.0
                and row['dominant_joint_frequency_hz'] is not None
                and .5 <= row['dominant_joint_frequency_hz'] <= 3.0

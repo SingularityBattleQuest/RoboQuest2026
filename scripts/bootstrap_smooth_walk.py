@@ -172,7 +172,8 @@ def train_smooth_walk(folder, steps=SMOOTH_STEPS, seed=0, sample_steps=30_000, u
     params = dict(kind='walk', reward_config=asdict(reward), ppo_kwargs=settings,
         total_timesteps=0, control_dt=.02, environment_revision='walk-v2',
         walk_env_kwargs=SMOOTH_ENV, seed=seed,
-        example_training={'sample_steps':sample_steps, 'updates':updates, 'mse':float(loss.item())})
+        example_training={'sample_steps':sample_steps, 'updates':updates, 'restart_aggregation_rounds': 2 if updates >= 1000 else 0,
+                          'restart_updates': 3000 if updates >= 1000 else 0, 'mse':float(loss.item())})
     (folder/'walk_params.json').write_text(json.dumps(params, indent=2))
     import shutil
     before = folder/'examples_only'; before.mkdir()

@@ -9,7 +9,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from roboquest.envs.go2_walk_env import Go2WalkEnv, CONTROL_DT
 
 
-def evaluate_transitions(folder, seeds=(200, 203, 209), seconds=20):
+def evaluate_transitions(folder, seeds=(200, 203, 209), seconds=20, verbose=True):
     folder = Path(folder)
     torch.set_num_threads(1)
     params = json.loads((folder/'walk_params.json').read_text())
@@ -51,7 +51,10 @@ def evaluate_transitions(folder, seeds=(200, 203, 209), seconds=20):
                       segment_seconds=seconds, warmup_seconds=1,
                       contact_measurement='all control steps, including command transitions')
         (folder/'walk_transition_evaluation.json').write_text(json.dumps(report, indent=2, allow_nan=False))
-        print(json.dumps(report, indent=2))
+        if verbose:
+            print(json.dumps(report, indent=2))
+        else:
+            print(f"停止・再発進: {sum(r['passed'] for r in rows)}/{len(rows)} 区間合格", flush=True)
         return report
     finally:
         norm.close()
