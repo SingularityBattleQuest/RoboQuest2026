@@ -68,7 +68,10 @@ def train_smooth_walk(folder, steps=SMOOTH_STEPS, seed=0, sample_steps=30_000, u
     model = PPO('MlpPolicy', env, seed=seed, **settings)
     teacher = Go2WalkEnv(randomize_cmd=False, reward_config=reward, **SMOOTH_ENV)
     observations, targets, returns = [], [], []
+    print(f"1/3: 歩行の見本を {sample_steps:,} ステップ収集します。", flush=True)
     for step in range(sample_steps):
+        if step and step % 10000 == 0:
+            print(f"  見本 {step:,}/{sample_steps:,}", flush=True)
         local_step = step % 500
         if local_step == 0:
             discounted_return = 0.
@@ -101,6 +104,14 @@ def train_smooth_walk(folder, steps=SMOOTH_STEPS, seed=0, sample_steps=30_000, u
     augmented[:, -12:] += rng.normal(0, .015, augmented[:, -12:].shape)
     x = torch.as_tensor(env.normalize_obs(np.concatenate([observations, augmented])), device='cpu')
     y = torch.as_tensor(np.concatenate([targets, targets]), device='cpu')
+    # Record a truly untrained actor using the same observation normalization.
+    # No bundled/pretrained policy is loaded in this training path.
+    untrained = folder / 'untrained'
+    untrained.mkdir()
+    model.save(untrained / 'walk_model')
+    env.save(str(untrained / 'walk_model_vecnorm.pkl'))
+    (untrained / 'walk_params.json').write_text(json.dumps({'walk_env_kwargs': SMOOTH_ENV}))
+    print(f"2/3: 未学習のニューラルネットに見本を学習させます（{updates:,} 回）。", flush=True)
     actor = list(model.policy.mlp_extractor.policy_net.parameters()) + list(model.policy.action_net.parameters())
     optimizer = torch.optim.Adam(actor, lr=3e-4)
     for update in range(updates):
@@ -110,6 +121,49 @@ def train_smooth_walk(folder, steps=SMOOTH_STEPS, seed=0, sample_steps=30_000, u
         optimizer.zero_grad(); loss.backward(); optimizer.step()
         if (update+1) % 1000 == 0:
             print('example update', update+1, 'MSE', float(loss.item()), flush=True)
+    # Dataset aggregation: the student can settle at poses absent from the
+    # teacher-only trajectories. Query the gait teacher from those actual poses
+    # so forward commands do not become a stationary fixed point after stopping.
+    # Training seeds are disjoint from qualification holdouts.
+    if updates >= 1000:
+        print('停止した自分の姿勢から再発進する見本を追加学習します。', flush=True)
+        for round_index in range(2):
+            extra_obs, extra_actions = [], []
+            probe = Go2WalkEnv(randomize_cmd=False, **SMOOTH_ENV)
+            try:
+                for episode in range(6):
+                    probe.set_vel_cmd(0., 0., 0.)
+                    obs, _ = probe.reset(seed=1000 + seed*100 + round_index*10 + episode)
+                    for command, count in ((0., 500), (.4, 250), (0., 500), (.4, 250)):
+                        probe.set_vel_cmd(command, 0., 0.)
+                        obs = probe._get_obs().astype(np.float32)
+                        for step in range(count):
+                            target = example_action(step*.02, command)
+                            extra_obs.append(obs.copy())
+                            extra_actions.append(target)
+                            # Stop under the student's own feedback controller;
+                            # start the teacher from the resulting physical state.
+                            if command == 0.:
+                                action, _ = model.predict(env.normalize_obs(obs), deterministic=True)
+                            else:
+                                action = target
+                            obs, _, fell, _, _ = probe.step(action)
+                            if fell:
+                                break
+            finally:
+                probe.close()
+            extra_x = torch.as_tensor(env.normalize_obs(np.asarray(extra_obs, dtype=np.float32)), device='cpu')
+            extra_y = torch.as_tensor(np.asarray(extra_actions, dtype=np.float32), device='cpu')
+            optimizer = torch.optim.Adam(actor, lr=1e-4)
+            for update in range(1500):
+                old_idx = torch.as_tensor(rng.integers(0, len(x), 256))
+                new_idx = torch.as_tensor(rng.integers(0, len(extra_x), 256))
+                inputs = torch.cat([x[old_idx], extra_x[new_idx]])
+                targets_batch = torch.cat([y[old_idx], extra_y[new_idx]])
+                prediction = model.policy._predict(inputs, deterministic=True)
+                loss = (prediction-targets_batch).square().mean()
+                optimizer.zero_grad(); loss.backward(); optimizer.step()
+            print(f'再発進の追加学習 {round_index+1}/2 完了', flush=True)
     with torch.no_grad():
         model.policy.log_std.fill_(-3.)
     model.policy.optimizer.state.clear()
@@ -126,6 +180,7 @@ def train_smooth_walk(folder, steps=SMOOTH_STEPS, seed=0, sample_steps=30_000, u
         shutil.copy2(folder/name, before/name)
     env.close()
     if steps:
+        print(f"3/3: PPOで {steps:,} ステップ微調整します。", flush=True)
         train_policy('walk', folder, reward, steps, num_envs, settings, seed=seed, resume=True,
                      checkpoint_steps=10_000, progress_bar=False, freeze_normalization=True)
     (folder/'walk_smooth_curriculum.json').write_text(json.dumps(

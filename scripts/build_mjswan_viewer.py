@@ -187,7 +187,7 @@ def _configure_walk_scene(spec, onnx_path):
             actuator.forcerange[:] = [-limits[index % 3], limits[index % 3]]
 
 
-def _make_velocity_command():
+def _make_velocity_command(default_forward=0.0):
     """コントロールパネルのスライダーによる速度コマンド設定。
 
     mjswan 0.8.2 のキーバインドは `c`（パネル開閉）と `r`（リセット）だけで、
@@ -199,7 +199,7 @@ def _make_velocity_command():
         lin_vel_x=(-1.0, 1.0),
         lin_vel_y=(-0.5, 0.5),
         ang_vel_z=(-1.0, 1.0),
-        default_lin_vel_x=0.0,
+        default_lin_vel_x=default_forward,
         default_lin_vel_y=0.0,
         default_ang_vel_z=0.0,
     )
@@ -261,6 +261,7 @@ def launch_viewer(app, height: int = 620, port: Optional[int] = None) -> None:
 def build_walk(
     walk_onnx_path: str | Path = "webapp/models/walk_policy_normalized.onnx",
     output_dir: str | Path = "/tmp/rq_walk_dist",
+    default_forward: float = 0.4,
 ) -> "mjswan.mjswanApp":
     """Walk ビューアーをビルドして mjswanApp を返す。
 
@@ -292,7 +293,7 @@ def build_walk(
             actions={"joint_pos": _saved_walk_action(walk_onnx_path)},
             policy_joint_names=JOINT_NAMES,
             default_joint_pos=STANDING_POS,
-            commands={VELOCITY_COMMAND_NAME: _make_velocity_command()},
+            commands={VELOCITY_COMMAND_NAME: _make_velocity_command(default_forward)},
         )
     )
 

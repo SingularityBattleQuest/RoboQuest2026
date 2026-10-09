@@ -9,6 +9,13 @@ sys.path.insert(0, str(ROOT))
 
 
 def execute(operation, args, kwargs):
+    if operation == 'record_walk':
+        import os
+        if sys.platform == 'linux':
+            os.environ.setdefault('MUJOCO_GL', 'egl')
+        from scripts.record_walk import record
+        record(*args, **kwargs)
+        return str(args[1])
     from scripts import notebook_workflow as workflow
     from scripts import bootstrap_smooth_walk as smooth
     from roboquest.utils.reward_utils import WalkRewardConfig, FleeRewardConfig
@@ -20,6 +27,11 @@ def execute(operation, args, kwargs):
     if operation == 'train_policy':
         args[2] = (WalkRewardConfig if args[0] == 'walk' else FleeRewardConfig)(**args[2])
         return workflow.train_policy(*args, **kwargs)
+    if operation in ('learn_walk', 'qualify_walk'):
+        from scripts import learn_walk
+        if kwargs.get('reward_config') is not None:
+            kwargs['reward_config'] = WalkRewardConfig(**kwargs['reward_config'])
+        return getattr(learn_walk, operation)(*args, **kwargs)
     if operation == 'train_smooth_walk':
         if kwargs.get('reward_config') is not None:
             kwargs['reward_config'] = WalkRewardConfig(**kwargs['reward_config'])

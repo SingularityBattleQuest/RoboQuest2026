@@ -50,7 +50,7 @@ def notebook_api():
     for name in ('WalkRewardConfig', 'FleeRewardConfig'):
         defaults[name] = make_dataclass(name, [(key, type(value), field(default=value))
                                               for key, value in defaults[name].items()])
-    for name in ('load_bundled_walk', 'train_policy', 'train_smooth_walk', 'evaluate_flee', 'evaluate_walk'):
+    for name in ('load_bundled_walk', 'train_policy', 'train_smooth_walk', 'evaluate_flee', 'evaluate_walk', 'learn_walk', 'qualify_walk', 'record_walk'):
         defaults[name] = partial(call, name)
     return defaults
 
