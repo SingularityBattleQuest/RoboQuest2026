@@ -49,7 +49,7 @@ def test_notebooks_use_isolated_setup_and_viewers():
     for name in ('quickstart_ja', 'guide_and_experiments_ja'):
         notebook = json.loads((ROOT/'notebooks'/f'{name}.ipynb').read_text())
         code = '\n'.join(''.join(c['source']) for c in notebook['cells'] if c['cell_type']=='code')
-        assert 'scripts/colab_runtime.py' in code
+        assert 'prepare_runtime()' in code
         assert 'pip' not in code
         assert 'from scripts.colab_client import notebook_api' in code
         assert 'import mjswan' not in code
