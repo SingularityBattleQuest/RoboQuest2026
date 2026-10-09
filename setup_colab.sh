@@ -10,6 +10,7 @@ echo "=== RoboQuest2026 セットアップ ==="
 cd "$(cd "$(dirname "$0")" && pwd)"
 
 echo "[1/3] ローカルと共通のライブラリをインストール中..."
+python3 -u scripts/colab_cpu_runtime.py
 python3 -m pip install -q -r requirements.txt
 
 # mjswan（ブラウザビューアー）は別途インストールする。
