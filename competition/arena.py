@@ -74,8 +74,8 @@ class Arena:
             self.rotation(role).T @ np.array([0.,0.,-1.]),
             self.data.qpos[p['jpos']]-STANDING_POS,
             self.data.qvel[p['jvel']], self.last[role],
-            math.sin(2*math.pi*1.5*self.data.time),
-            math.cos(2*math.pi*1.5*self.data.time)]).astype(np.float32)
+            [math.sin(2*math.pi*1.5*self.data.time),
+             math.cos(2*math.pi*1.5*self.data.time)]]).astype(np.float32)
 
     def high_obs(self):
         xy = self.position('flee')
