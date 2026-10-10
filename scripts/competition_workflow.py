@@ -5,6 +5,7 @@ import math
 import time
 import numpy as np
 import torch
+import gymnasium as gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import VecNormalize
@@ -15,6 +16,29 @@ from scripts.export_for_web import export_normalized_policy_onnx,NormalizedPolic
 from scripts.bootstrap_smooth_walk import SMOOTH_ENV,SMOOTH_REWARD,SMOOTH_PPO
 from roboquest.envs.go2_walk_env import Go2WalkEnv
 from roboquest.utils.reward_utils import WalkRewardConfig
+
+
+class CompetitionWalk(gym.ObservationWrapper):
+    """Official 45 physical features plus a public 1.5Hz phase clock."""
+    def __init__(self,**kwargs):
+        super().__init__(Go2WalkEnv(**kwargs))
+        self.observation_space=gym.spaces.Box(-np.inf,np.inf,shape=(47,),dtype=np.float32)
+
+    def observation(self,obs):
+        phase=2*math.pi*1.5*self.unwrapped.data.time
+        return np.concatenate([obs,[math.sin(phase),math.cos(phase)]]).astype(np.float32)
+
+    def set_vel_cmd(self,*args):
+        self.unwrapped.set_vel_cmd(*args)
+
+    def _get_obs(self):
+        return self.observation(self.unwrapped._get_obs())
+
+    @property
+    def robot_xy(self):return self.unwrapped.robot_xy
+
+    @property
+    def data(self):return self.unwrapped.data
 
 
 def _fit(model,env,observations,targets,updates,seed):
@@ -81,9 +105,9 @@ def train_competition_walk(save_dir,seed=0,sample_steps=30000,updates=4000,ppo_s
     settings={**SMOOTH_ENV,'command_mode':'uniform',
               'command_ranges':{'vx':[-.4,.45],'vy':[-.15,.15],'omega':[-.7,.7]}}
     reward=WalkRewardConfig(**SMOOTH_REWARD)
-    env=VecNormalize(make_vec_env(lambda:Go2WalkEnv(reward_config=reward,**settings),n_envs=4,seed=seed))
+    env=VecNormalize(make_vec_env(lambda:CompetitionWalk(reward_config=reward,**settings),n_envs=4,seed=seed))
     model=PPO('MlpPolicy',env,seed=seed,**SMOOTH_PPO)
-    teacher=Go2WalkEnv(randomize_cmd=False,**settings)
+    teacher=CompetitionWalk(randomize_cmd=False,**settings)
     observations=[];targets=[]
     print('本番用の歩行を未学習モデルから学習します（前後進・旋回・横移動・停止）。',flush=True)
     try:
@@ -107,7 +131,7 @@ def train_competition_walk(save_dir,seed=0,sample_steps=30000,updates=4000,ppo_s
         # Teacher-only trajectories otherwise permit a stationary fixed point.
         for round_index in range(3):
             extra_obs=[];extra_targets=[]
-            probe=Go2WalkEnv(randomize_cmd=False,**settings)
+            probe=CompetitionWalk(randomize_cmd=False,**settings)
             try:
                 for command in [( .4,0.,0.),(-.3,0.,0.),(0.,0.,.6),(0.,0.,-.6),(0.,.12,0.),(.3,0.,.4),(.3,0.,-.4)]:
                     probe.set_vel_cmd(0.,0.,0.)
@@ -115,7 +139,7 @@ def train_competition_walk(save_dir,seed=0,sample_steps=30000,updates=4000,ppo_s
                     for cmd,count in [((0.,0.,0.),500),(command,500),((0.,0.,0.),500),(command,500)]:
                         probe.set_vel_cmd(*cmd);obs=probe._get_obs().astype(np.float32)
                         for step in range(count):
-                            target=gait_action(step*.02,cmd[0],cmd[2],cmd[1])
+                            target=gait_action(probe.data.time,cmd[0],cmd[2],cmd[1])
                             extra_obs.append(obs.copy());extra_targets.append(target)
                             action=model.predict(env.normalize_obs(obs),deterministic=True)[0] if cmd==(0.,0.,0.) else target
                             obs,_,fell,_,_=probe.step(action)
@@ -140,7 +164,7 @@ def train_competition_walk(save_dir,seed=0,sample_steps=30000,updates=4000,ppo_s
     finally:env.close()
     rows=[]
     for command in [(0.,0.,0.),(.4,0.,0.),(-.3,0.,0.),(0.,0.,.5),(0.,0.,-.5),(0.,.1,0.)]:
-        probe=Go2WalkEnv(randomize_cmd=False,**settings)
+        probe=CompetitionWalk(randomize_cmd=False,**settings)
         try:
             probe.set_vel_cmd(*command);obs,_=probe.reset(seed=500)
             start=probe.robot_xy.copy();yaw=0.;fell=False
@@ -177,7 +201,7 @@ def train_competition_flee(save_dir,seed=0,sample_steps=12000,updates=2000,ppo_s
     folder=Path(save_dir);walk_folder=folder/'competition_walk'
     q=json.loads((walk_folder/'qualification.json').read_text())
     if not q['passed'] or q['version']!=VERSION:raise RuntimeError('本番用歩行を先に合格させてください。')
-    walk=Policy((walk_folder/'walk.onnx').read_bytes(),45,12)
+    walk=Policy((walk_folder/'walk.onnx').read_bytes(),47,12)
     torch.set_num_threads(1);torch.manual_seed(seed)
     env=VecNormalize(make_vec_env(lambda:FleeEnv(walk,reward),n_envs=2,seed=seed))
     settings=dict(learning_rate=1e-5,n_steps=512,batch_size=128,n_epochs=5,

@@ -98,10 +98,10 @@ class Submission:
             if not isinstance(m.get('sources'),list): raise SubmissionError('Source declarations required')
             if m.get('mode')=='hierarchical':
                 members={'manifest.json','walk.onnx','flee.onnx'}
-                shapes={'walk.onnx':(45,12),'flee.onnx':(19,3)}
+                shapes={'walk.onnx':(47,12),'flee.onnx':(19,3)}
             elif m.get('mode')=='direct':
                 members={'manifest.json','direct.onnx'}
-                shapes={'direct.onnx':(64,12)}
+                shapes={'direct.onnx':(66,12)}
             else: raise SubmissionError('Mode must be hierarchical or direct')
             if set(z.namelist())!=members: raise SubmissionError('Unexpected archive members')
             self.policies={}
