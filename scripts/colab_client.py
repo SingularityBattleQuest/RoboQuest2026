@@ -52,6 +52,9 @@ def notebook_api():
                                               for key, value in defaults[name].items()])
     for name in ('load_bundled_walk', 'train_policy', 'train_smooth_walk', 'evaluate_flee', 'evaluate_walk', 'learn_walk', 'qualify_walk', 'record_walk'):
         defaults[name] = partial(call, name)
+    for name in ('prepare_oni', 'record_oni_demo', 'train_competition_walk',
+                 'train_competition_flee', 'package_competition', 'evaluate_competition'):
+        defaults[name] = partial(call, name)
     return defaults
 
 

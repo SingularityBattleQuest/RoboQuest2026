@@ -1,192 +1,117 @@
-"""
-大会試合実行スクリプト
-
-チームの逃げロボットモデル vs 運営の鬼モデルで試合を行い結果を返す。
-
-使用例:
-  python competition/run_match.py \\
-    --flee models/flee_robot/flee_final.zip \\
-    --oni   models/oni_robot/oni_final.zip
-
-  # トーナメント（全チーム一括）
-  python competition/run_match.py \\
-    --tournament \\
-    --teams-dir /content/drive/MyDrive/RoboQuest2026 \\
-    --oni models/oni_robot/oni_final.zip
-"""
+"""Official one-on-one evaluation. python -m competition.run_match --submission team.zip"""
 import argparse
-import glob
+from collections import defaultdict
+import hashlib
+from importlib.metadata import version
+import json
 import os
+from pathlib import Path
+import platform
+import subprocess
 import sys
-from typing import Dict, List, Optional
-
-import numpy as np
-import pandas as pd
-from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from roboquest.envs.go2_tag_env import Go2TagEnv
-from roboquest.utils.visualization import record_episode, show_video_colab
+import tempfile
 
 
-def load_model(model_path: str, normalize_path: Optional[str] = None):
-    """SB3 モデルを読み込む。VecNormalize があれば一緒に読み込む。"""
-    model = PPO.load(model_path)
-    return model
+def evaluate(submission_path,oni_speed=.3,video=None):
+    from competition.arena import Arena
+    from competition.rules import Rules,SEEDS,SPAWNS
+    from competition.scene import scene_digest
+    from competition.submission import Submission,SubmissionError
+    package=Submission(submission_path)
+    arena=Arena(Rules(oni_speed=oni_speed))
+    results=[]
+    writer=None
+    if video:
+        import imageio.v2 as imageio
+        Path(video).parent.mkdir(parents=True,exist_ok=True)
+        writer=imageio.get_writer(str(video),fps=10)
+    try:
+        for seed in SEEDS:
+            for spawn in SPAWNS:
+                arena.reset(seed,spawn);package.reset()
+                while not arena.reason:
+                    try:action=package.action(arena)
+                    except SubmissionError as e:
+                        arena.reason='model_error'
+                        result=arena.result();result['error']=str(e)
+                        break
+                    result=arena.step(action)
+                    if result['reason']=='physics_error':
+                        raise RuntimeError('Infrastructure physics error: match must be replayed')
+                    if writer and seed==SEEDS[0] and spawn==SPAWNS[0] and arena.ticks%5==0:
+                        writer.append_data(arena.render())
+                results.append(result)
+                print(f"{seed}/{spawn}: {result['survived_seconds']:.3f}s {result['reason']}",flush=True)
+    finally:
+        arena.close()
+        if writer:writer.close()
+    score_ticks=sum(round(r['survived_seconds']/.002) for r in results)
+    return dict(team=package.manifest['team'],submission_sha256=package.sha256,
+                oni_speed=oni_speed,episodes=results,score_ticks=score_ticks,
+                mean_survival_seconds=score_ticks*.002/len(results),
+                completions=sum(r['reason']=='survived' for r in results),
+                scene_sha256=scene_digest(),
+                rule_sha256=arena.rules.digest,rule_version=arena.rules.version,
+                environment={'python':platform.python_version(),'platform':platform.platform(),
+                             **{p:version(p) for p in ('mujoco','numpy','onnx','onnxruntime')}})
 
 
-def run_single_match(
-    flee_model_path: str,
-    oni_model_path: Optional[str] = None,
-    n_episodes: int = 10,
-    max_steps: int = 1000,
-) -> Dict:
-    """1対1の試合を実行してスコアを返す。
-
-    Args:
-        flee_model_path: 逃げロボットモデル (.zip)
-        oni_model_path: 鬼モデル (.zip)。None の場合はスクリプト鬼。
-        n_episodes: 試合エピソード数
-        max_steps: 1エピソードの最大ステップ数
-
-    Returns:
-        dict: {survival_time, caught_count, avg_distance, score, episodes}
-    """
-    flee_model = load_model(flee_model_path)
-    oni_model = load_model(oni_model_path) if oni_model_path else None
-
-    survival_times = []
-    caught_flags = []
-    avg_distances = []
-
-    env = Go2TagEnv(max_episode_steps=max_steps)
-
-    for ep in range(n_episodes):
-        obs, _ = env.reset()
-        total_distance = 0.0
-        step = 0
-
-        for step in range(max_steps):
-            action, _ = flee_model.predict(obs, deterministic=True)
-            obs, reward, terminated, truncated, info = env.step(action)
-            total_distance += info.get("oni_distance", 0.0)
-
-            if terminated or truncated:
-                break
-
-        survival_times.append(step + 1)
-        caught_flags.append(int(info.get("is_tagged", 0)))
-        avg_distances.append(total_distance / (step + 1))
-
-    env.close()
-
-    score = (
-        np.mean(survival_times) * 0.5
-        + np.mean(avg_distances) * 100
-        - np.sum(caught_flags) * 50
-    )
-
-    return {
-        "survival_time": float(np.mean(survival_times)),
-        "caught_count": int(np.sum(caught_flags)),
-        "avg_distance": float(np.mean(avg_distances)),
-        "score": float(score),
-        "episodes": n_episodes,
-    }
+def isolated_evaluate(path,oni_speed=.3,video=None):
+    with tempfile.TemporaryDirectory(prefix='rq_match_') as tmp:
+        output=Path(tmp)/'result.json'
+        command=[sys.executable,'-m','competition.run_match','--worker',
+                 '--submission',str(Path(path).resolve()),'--speed',str(oni_speed),'--output',str(output)]
+        if video:command+=['--video',str(Path(video).resolve())]
+        env={**os.environ,'OPENBLAS_NUM_THREADS':'1','OMP_NUM_THREADS':'1','MKL_NUM_THREADS':'1'}
+        subprocess.run(command,timeout=300,check=True,env=env)
+        return json.loads(output.read_text())
 
 
-def run_tournament(
-    teams_dir: str,
-    oni_model_path: Optional[str] = None,
-    n_episodes: int = 5,
-) -> pd.DataFrame:
-    """全チームのモデルを読み込んでトーナメントを実行する。
-
-    Args:
-        teams_dir: 各チームのモデルが入ったディレクトリ
-                   例: teams_dir/チームA/flee_final.zip
-        oni_model_path: 鬼モデル
-        n_episodes: チームごとの試合エピソード数
-
-    Returns:
-        DataFrame: チームランキング表
-    """
-    # チームモデルを探す
-    model_files = glob.glob(os.path.join(teams_dir, "**", "flee_final.zip"), recursive=True)
-    if not model_files:
-        model_files = glob.glob(os.path.join(teams_dir, "**", "best_model.zip"), recursive=True)
-
-    if not model_files:
-        print(f"チームモデルが見つかりません: {teams_dir}")
-        return pd.DataFrame()
-
-    results = []
-    for model_path in sorted(model_files):
-        team_name = os.path.basename(os.path.dirname(model_path))
-        print(f"試合中: {team_name} ...", end=" ", flush=True)
-        try:
-            result = run_single_match(model_path, oni_model_path, n_episodes=n_episodes)
-            result["team"] = team_name
-            results.append(result)
-            print(f"スコア: {result['score']:.1f}")
-        except Exception as e:
-            print(f"エラー: {e}")
-
-    if not results:
-        return pd.DataFrame()
-
-    df = pd.DataFrame(results)
-    df = df.sort_values("score", ascending=False).reset_index(drop=True)
-    df.index += 1
-    df.index.name = "順位"
-    return df[["team", "score", "survival_time", "avg_distance", "caught_count"]]
-
-
-def record_match(
-    flee_model_path: str,
-    oni_model_path: Optional[str] = None,
-    n_steps: int = 1000,
-    show_inline: bool = True,
-) -> List:
-    """試合を録画して Colab でインライン表示する。"""
-    flee_model = load_model(flee_model_path)
-    env = Go2TagEnv(render_mode="rgb_array")
-    frames = record_episode(env, model=flee_model, n_steps=n_steps)
-    env.close()
-
-    if show_inline:
-        show_video_colab(frames)
-    return frames
+def tournament(paths):
+    reports=[isolated_evaluate(p) for p in paths]
+    if len({r['team'] for r in reports})!=len(reports):raise ValueError('Duplicate team names')
+    for report in reports:report['rounds']=[report['score_ticks']]
+    for speed in (.4,.5):
+        groups=defaultdict(list)
+        for index,report in enumerate(reports):groups[tuple(report['rounds'])].append(index)
+        for indices in groups.values():
+            if len(indices)<2:continue
+            for index in indices:
+                extra=isolated_evaluate(paths[index],speed)
+                reports[index].setdefault('tiebreaks',[]).append(extra)
+                reports[index]['rounds'].append(extra['score_ticks'])
+    reports.sort(key=lambda r:tuple(r['rounds']),reverse=True)
+    previous=None;rank=0
+    for index,r in enumerate(reports):
+        key=tuple(r['rounds'])
+        if key!=previous:rank=index+1
+        r['rank']=rank;previous=key
+    return reports
 
 
 def main():
-    parser = argparse.ArgumentParser(description="鬼ごっこ大会スクリプト")
-    parser.add_argument("--flee", required=False, help="逃げモデルパス (.zip)")
-    parser.add_argument("--oni", default=None, help="鬼モデルパス (.zip)")
-    parser.add_argument("--episodes", type=int, default=10)
-    parser.add_argument("--tournament", action="store_true")
-    parser.add_argument("--teams-dir", default="models/teams")
-    parser.add_argument("--record", action="store_true", help="試合を録画して表示")
-    args = parser.parse_args()
-
-    if args.tournament:
-        df = run_tournament(args.teams_dir, args.oni, args.episodes)
-        print("\n=== 大会結果 ===")
-        print(df.to_string())
-        df.to_csv("tournament_results.csv", index=True, encoding="utf-8-sig")
-        print("\n結果を tournament_results.csv に保存しました")
-    elif args.flee:
-        if args.record:
-            record_match(args.flee, args.oni)
-        else:
-            result = run_single_match(args.flee, args.oni, args.episodes)
-            print("\n=== 試合結果 ===")
-            for k, v in result.items():
-                print(f"  {k}: {v}")
-    else:
-        parser.print_help()
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--submission',type=Path)
+    parser.add_argument('--teams-dir',type=Path)
+    parser.add_argument('--output',type=Path,default=Path('competition_results.json'))
+    parser.add_argument('--video',type=Path)
+    parser.add_argument('--worker',action='store_true',help=argparse.SUPPRESS)
+    parser.add_argument('--speed',type=float,default=.3,choices=[.3,.4,.5])
+    args=parser.parse_args()
+    if args.worker:
+        if sys.platform=='linux':
+            import resource
+            resource.setrlimit(resource.RLIMIT_AS,(2*1024**3,2*1024**3))
+        result=evaluate(args.submission,args.speed,args.video)
+    elif args.teams_dir:
+        paths=sorted(args.teams_dir.glob('*.zip'))
+        if not paths:parser.error('No submission ZIP files')
+        result=tournament(paths)
+    elif args.submission:result=isolated_evaluate(args.submission,args.speed,args.video)
+    else:parser.error('--submission or --teams-dir required; legacy model ZIPs are not accepted')
+    args.output.parent.mkdir(parents=True,exist_ok=True)
+    args.output.write_text(json.dumps(result,ensure_ascii=False,indent=2,allow_nan=False))
+    print(f'Results: {args.output}',flush=True)
 
 
-if __name__ == "__main__":
-    main()
+if __name__=='__main__':main()
