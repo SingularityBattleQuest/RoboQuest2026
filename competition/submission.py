@@ -60,7 +60,9 @@ class Policy:
         self.input=self.session.get_inputs()[0].name
         self.obs_dim,self.action_dim=obs_dim,action_dim
         # Initial graph preparation is excluded from the per-inference budget.
+        self._warmup=True
         self(np.zeros(obs_dim,dtype=np.float32))
+        self._warmup=False
 
     def __call__(self,obs):
         obs=np.asarray(obs,dtype=np.float32)
@@ -68,7 +70,7 @@ class Policy:
             raise SubmissionError('Invalid observation')
         start=time.monotonic()
         out=self.session.run(None,{self.input:obs[None]})[0]
-        if time.monotonic()-start>.1:
+        if not self._warmup and time.monotonic()-start>.1:
             raise SubmissionError('Inference exceeded 100ms')
         if out.shape!=(1,self.action_dim) or not np.all(np.isfinite(out)):
             raise SubmissionError('Invalid action: shape or NaN/Inf')
