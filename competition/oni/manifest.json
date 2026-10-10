@@ -1,0 +1,151 @@
+{
+  "version": "rq2026-1v1-v1",
+  "model": "walk.onnx",
+  "sha256": "bdba05f0ee4778e56236904270b007ee4d0d446ce5b0721766e5a7109ef81977",
+  "observation_dim": 47,
+  "action_dim": 12,
+  "normalization": "identity embedded in trained input contract",
+  "training": {
+    "recipe": "scripts.train_official_oni.train",
+    "seed": 2026,
+    "algorithm": "supervised behavior cloning",
+    "samples": 24000,
+    "updates": 16000,
+    "teacher_max_action_error": 0.07991409301757812,
+    "used_observations": "velocity commands and public phase; physical feedback features reserved"
+  },
+  "qualification": [
+    {
+      "seed": 90,
+      "spawn": "east",
+      "oni_speed": 0.3,
+      "survived_seconds": 6.393999999999518,
+      "reason": "captured",
+      "rule_version": "rq2026-1v1-v1",
+      "rule_sha256": "87c82039c3b78cbd263aebd744b6176e35543da6d81522600d770bea3bb4bd45",
+      "oni_sha256": "bdba05f0ee4778e56236904270b007ee4d0d446ce5b0721766e5a7109ef81977",
+      "oni_min_height": 0.2767880384636299
+    },
+    {
+      "seed": 90,
+      "spawn": "north",
+      "oni_speed": 0.3,
+      "survived_seconds": 7.0419999999994465,
+      "reason": "captured",
+      "rule_version": "rq2026-1v1-v1",
+      "rule_sha256": "87c82039c3b78cbd263aebd744b6176e35543da6d81522600d770bea3bb4bd45",
+      "oni_sha256": "bdba05f0ee4778e56236904270b007ee4d0d446ce5b0721766e5a7109ef81977",
+      "oni_min_height": 0.27678803846363
+    },
+    {
+      "seed": 90,
+      "spawn": "west",
+      "oni_speed": 0.3,
+      "survived_seconds": 6.721999999999482,
+      "reason": "captured",
+      "rule_version": "rq2026-1v1-v1",
+      "rule_sha256": "87c82039c3b78cbd263aebd744b6176e35543da6d81522600d770bea3bb4bd45",
+      "oni_sha256": "bdba05f0ee4778e56236904270b007ee4d0d446ce5b0721766e5a7109ef81977",
+      "oni_min_height": 0.2767880384636299
+    },
+    {
+      "seed": 90,
+      "spawn": "south",
+      "oni_speed": 0.3,
+      "survived_seconds": 7.411999999999406,
+      "reason": "captured",
+      "rule_version": "rq2026-1v1-v1",
+      "rule_sha256": "87c82039c3b78cbd263aebd744b6176e35543da6d81522600d770bea3bb4bd45",
+      "oni_sha256": "bdba05f0ee4778e56236904270b007ee4d0d446ce5b0721766e5a7109ef81977",
+      "oni_min_height": 0.27678803846363
+    },
+    {
+      "seed": 90,
+      "spawn": "east",
+      "oni_speed": 0.4,
+      "survived_seconds": 4.151999999999765,
+      "reason": "captured",
+      "rule_version": "rq2026-1v1-v1",
+      "rule_sha256": "02cedded0f048e706e88f22e847f7d8ad59386252277c9e39b3942087b998a81",
+      "oni_sha256": "bdba05f0ee4778e56236904270b007ee4d0d446ce5b0721766e5a7109ef81977",
+      "oni_min_height": 0.27748286117795273
+    },
+    {
+      "seed": 90,
+      "spawn": "north",
+      "oni_speed": 0.4,
+      "survived_seconds": 4.821999999999691,
+      "reason": "captured",
+      "rule_version": "rq2026-1v1-v1",
+      "rule_sha256": "02cedded0f048e706e88f22e847f7d8ad59386252277c9e39b3942087b998a81",
+      "oni_sha256": "bdba05f0ee4778e56236904270b007ee4d0d446ce5b0721766e5a7109ef81977",
+      "oni_min_height": 0.27748286117795273
+    },
+    {
+      "seed": 90,
+      "spawn": "west",
+      "oni_speed": 0.4,
+      "survived_seconds": 4.3719999999997405,
+      "reason": "captured",
+      "rule_version": "rq2026-1v1-v1",
+      "rule_sha256": "02cedded0f048e706e88f22e847f7d8ad59386252277c9e39b3942087b998a81",
+      "oni_sha256": "bdba05f0ee4778e56236904270b007ee4d0d446ce5b0721766e5a7109ef81977",
+      "oni_min_height": 0.27748286117795273
+    },
+    {
+      "seed": 90,
+      "spawn": "south",
+      "oni_speed": 0.4,
+      "survived_seconds": 4.659999999999709,
+      "reason": "captured",
+      "rule_version": "rq2026-1v1-v1",
+      "rule_sha256": "02cedded0f048e706e88f22e847f7d8ad59386252277c9e39b3942087b998a81",
+      "oni_sha256": "bdba05f0ee4778e56236904270b007ee4d0d446ce5b0721766e5a7109ef81977",
+      "oni_min_height": 0.27748286117795273
+    },
+    {
+      "seed": 90,
+      "spawn": "east",
+      "oni_speed": 0.5,
+      "survived_seconds": 3.6959999999998145,
+      "reason": "captured",
+      "rule_version": "rq2026-1v1-v1",
+      "rule_sha256": "63966728a9b695848e7206f7c663254f193a4eba3661507fb84998284d92538d",
+      "oni_sha256": "bdba05f0ee4778e56236904270b007ee4d0d446ce5b0721766e5a7109ef81977",
+      "oni_min_height": 0.27467470699149504
+    },
+    {
+      "seed": 90,
+      "spawn": "north",
+      "oni_speed": 0.5,
+      "survived_seconds": 4.077999999999773,
+      "reason": "captured",
+      "rule_version": "rq2026-1v1-v1",
+      "rule_sha256": "63966728a9b695848e7206f7c663254f193a4eba3661507fb84998284d92538d",
+      "oni_sha256": "bdba05f0ee4778e56236904270b007ee4d0d446ce5b0721766e5a7109ef81977",
+      "oni_min_height": 0.27564013300435725
+    },
+    {
+      "seed": 90,
+      "spawn": "west",
+      "oni_speed": 0.5,
+      "survived_seconds": 3.7779999999998055,
+      "reason": "captured",
+      "rule_version": "rq2026-1v1-v1",
+      "rule_sha256": "63966728a9b695848e7206f7c663254f193a4eba3661507fb84998284d92538d",
+      "oni_sha256": "bdba05f0ee4778e56236904270b007ee4d0d446ce5b0721766e5a7109ef81977",
+      "oni_min_height": 0.2746747069914949
+    },
+    {
+      "seed": 90,
+      "spawn": "south",
+      "oni_speed": 0.5,
+      "survived_seconds": 3.9759999999997837,
+      "reason": "captured",
+      "rule_version": "rq2026-1v1-v1",
+      "rule_sha256": "63966728a9b695848e7206f7c663254f193a4eba3661507fb84998284d92538d",
+      "oni_sha256": "bdba05f0ee4778e56236904270b007ee4d0d446ce5b0721766e5a7109ef81977",
+      "oni_min_height": 0.27473731946636654
+    }
+  ]
+}

@@ -1,5 +1,8 @@
 """Shared physical training/scoring arena with a four-legged pursuing robot."""
 import math
+import hashlib
+import json
+from pathlib import Path
 import mujoco
 import numpy as np
 from competition.rules import (Rules, CONTROL_DT, ACTION_SCALE, JOINT_DAMPING,
@@ -35,6 +38,14 @@ class Arena:
                         self._geom_role[gid] = role
                 body = int(self.model.body_parentid[body])
         self.renderer = None
+        from competition.submission import Policy
+        oni_folder=Path(__file__).parent/'oni'
+        manifest=json.loads((oni_folder/'manifest.json').read_text())
+        model_bytes=(oni_folder/'walk.onnx').read_bytes()
+        self.oni_digest=hashlib.sha256(model_bytes).hexdigest()
+        if self.oni_digest!=manifest['sha256']:
+            raise ValueError('Official oni model hash mismatch')
+        self.oni_policy=Policy(model_bytes,47,12)
         self.reset()
 
     def reset(self, seed=100, spawn='east'):
@@ -98,13 +109,13 @@ class Arena:
         return np.concatenate([self.walk_obs('flee',np.zeros(3)),self.high_obs()])
 
     def oni_action(self):
-        """Fixed feedback + inverse-kinematic trot; never writes robot poses."""
+        """Fixed pursuit commands; the published learned model drives joints."""
         target = self.position('flee')-self.position('oni')
         local = self.rotation('oni').T @ target
         error = math.atan2(local[1], local[0])
-        yaw_rate = float(np.clip(2*error,-.8,.8))
-        speed = self.rules.oni_speed*max(0.,math.cos(error))
-        return gait_action(self.ticks*CONTROL_DT, speed, yaw_rate)
+        yaw_rate = math.copysign(.5,error) if abs(error)>.1 else 0.
+        speed = self.rules.oni_speed if abs(error)<.4 else 0.
+        return self.oni_policy(self.walk_obs('oni',[speed,0.,yaw_rate]))
 
     def step(self, flee_action):
         if self.reason:
@@ -125,7 +136,10 @@ class Arena:
             mujoco.mj_step(self.model,self.data)
             for c in self.data.contact[:self.data.ncon]:
                 roles = {self._geom_role.get(int(c.geom1)),self._geom_role.get(int(c.geom2))}
-                if roles == {'flee','oni'} and c.dist <= 0:
+                # The Go2 collision shapes have a 1mm contact margin. MuJoCo
+                # can prevent penetration while already applying a contact
+                # constraint; requiring negative distance misses real contact.
+                if roles == {'flee','oni'} and c.efc_address >= 0:
                     captured = True
                     break
             if captured:
@@ -146,7 +160,8 @@ class Arena:
     def result(self):
         return dict(seed=self.seed,spawn=self.spawn,oni_speed=self.rules.oni_speed,
                     survived_seconds=min(float(self.data.time),self.rules.duration),
-                    reason=self.reason,rule_version=self.rules.version,rule_sha256=self.rules.digest)
+                    reason=self.reason,rule_version=self.rules.version,rule_sha256=self.rules.digest,
+                    oni_sha256=self.oni_digest)
 
     def render(self,width=480,height=480):
         if self.renderer is None:

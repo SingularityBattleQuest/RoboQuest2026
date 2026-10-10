@@ -14,3 +14,5 @@ Google Colabで実行してください。両教材とも「歩行 → 逃げ」
 環境の修正内容、学習の再現手順、評価結果は [ローカル歩行学習](docs/walk_training/README.md) にまとめています。入門の同梱モデルは停止・前進の確認用です。本番では別の47次元入力モデルを学習し、前後進・左右旋回・横移動・停止の資格試験を通過してから逃げ学習へ進みます。
 
 初期設定の `retrain_walk=True` は未学習から学習します。`retrain_walk=False` に変更すると、同梱した停止・前進用の検証済みモデルを読み込みます。ZIPのアップロードは不要です。
+
+本番用の鬼は学習済み [`competition/oni/walk.onnx`](competition/oni/walk.onnx) を両Colabと本番で共通に読み込みます。SHA-256を照合し、固定の追跡速度指令から12関節を動かします。鬼の再学習は不要です。学習手順と追跡試験結果は [`competition/oni/manifest.json`](competition/oni/manifest.json) に保存しています。

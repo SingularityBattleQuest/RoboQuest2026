@@ -55,7 +55,7 @@ def test_repeatable_real_pursuit_and_contact_capture():
             assert a.reason=='captured' and 2<a.data.time<15
             assert a.position('oni')[2]>.15
             assert abs(a.position('oni')[0]-2)>1
-            assert any({a._geom_role.get(int(c.geom1)),a._geom_role.get(int(c.geom2))}=={'oni','flee'} and c.dist<=0 for c in a.data.contact[:a.data.ncon])
+            assert any({a._geom_role.get(int(c.geom1)),a._geom_role.get(int(c.geom2))}=={'oni','flee'} and c.efc_address>=0 for c in a.data.contact[:a.data.ncon])
             rows.append((a.result(),a.data.qpos.copy()))
         assert rows[0][0]==rows[1][0]
         np.testing.assert_array_equal(rows[0][1],rows[1][1])

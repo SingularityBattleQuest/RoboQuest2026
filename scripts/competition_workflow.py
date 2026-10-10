@@ -104,7 +104,7 @@ def prepare_oni(save_dir):
             print(f"四脚の鬼 {spawn}: {row['survived_seconds']:.2f}s、{row['reason']}、最低胴体高 {minheight:.3f}m",flush=True)
     finally:arena.close()
     passed=all(r['reason']=='captured' and r['oni_min_height']>=.15 and r['oni_distance_m']>1 for r in rows)
-    report=dict(version=VERSION,passed=passed,controller='fixed feedback + inverse-kinematic trot',rows=rows)
+    report=dict(version=VERSION,passed=passed,controller='fixed pursuit commands + published learned ONNX',oni_sha256=arena.oni_digest,rows=rows)
     (folder/'oni_verification.json').write_text(json.dumps(report,indent=2))
     if not passed:raise RuntimeError('鬼の追跡試験に不合格。次へ進めません。')
     return report
@@ -220,6 +220,7 @@ def train_competition_flee(save_dir,seed=0,sample_steps=12000,updates=2000,ppo_s
                   ent_coef=0.,policy_kwargs={'net_arch':[128,128]},device='cpu')
     model=PPO('MlpPolicy',env,seed=seed,**settings)
     teacher=FleeEnv(walk,reward)
+    oni_sha256=teacher.arena.oni_digest
     observations=[];targets=[]
     obs,_=teacher.reset(seed=seed)
     print('実際の四脚の鬼から逃げる見本を収集します。',flush=True)
@@ -237,7 +238,7 @@ def train_competition_flee(save_dir,seed=0,sample_steps=12000,updates=2000,ppo_s
         model.learn(total_timesteps=ppo_steps,progress_bar=False,callback=TrainingProgress('逃げPPO'))
         policy,error=_verified_export(model,env,folder,'flee',observations)
         (folder/'competition_training.json').write_text(json.dumps(dict(version=VERSION,seed=seed,
-            sample_steps=sample_steps,updates=updates,ppo_steps=int(model.num_timesteps),export_error=error),indent=2))
+            sample_steps=sample_steps,updates=updates,ppo_steps=int(model.num_timesteps),export_error=error,oni_sha256=oni_sha256),indent=2))
     finally:env.close()
     return dict(version=VERSION,trained=True,export_error=error)
 

@@ -69,7 +69,9 @@ def isolated_evaluate(path,oni_speed=.3,video=None):
                  '--submission',str(Path(path).resolve()),'--speed',str(oni_speed),'--output',str(output)]
         if video:command+=['--video',str(Path(video).resolve())]
         env={**os.environ,'OPENBLAS_NUM_THREADS':'1','OMP_NUM_THREADS':'1','MKL_NUM_THREADS':'1'}
-        subprocess.run(command,timeout=300,check=True,env=env)
+        # Allow all 20 full-duration matches even at the permitted 100ms
+        # inference budget (3,000 low + 300 high calls per match).
+        subprocess.run(command,timeout=7500,check=True,env=env)
         return json.loads(output.read_text())
 
 
