@@ -48,7 +48,7 @@ class Arena:
             xy = (0., 0.) if role == 'flee' else tuple(self.rules.spawn_distance*np.array([math.cos(angle), math.sin(angle)]))
             yaw = 0. if role == 'flee' else angle+math.pi
             self.data.qpos[q:q+7] = [*xy,.27,math.cos(yaw/2),0.,0.,math.sin(yaw/2)]
-            # Noise only in articulated joints, identical for each role/seed.
+            # Seeded noise only in articulated joints; no root pose noise.
             self.data.qpos[part['jpos']] = STANDING_POS + rng.uniform(-.01,.01,12)
             self.data.ctrl[part['act']] = STANDING_POS
             self.last[role] = np.zeros(12)
@@ -89,7 +89,7 @@ class Arena:
         obs = np.array([rel[0],rel[1],np.linalg.norm((oni-xy)[:2]),
             xy[0],xy[1],rotation[0,0],rotation[1,0],*vel,
             h-xy[0],h-xy[1],h+xy[0],h+xy[1],
-            max(0.,1-self.ticks*CONTROL_DT/self.rules.duration),
+            max(0.,1-self.data.time/self.rules.duration),
             *relvel[:2],oni[2],self.rotation('oni')[2,2]], dtype=np.float32)
         assert obs.shape == (HIGH_OBS_DIM,)
         return obs

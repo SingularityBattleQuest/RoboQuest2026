@@ -51,6 +51,8 @@ def evaluate(submission_path,oni_speed=.3,video=None):
                 mean_survival_seconds=score_ticks*.002/len(results),
                 completions=sum(r['reason']=='survived' for r in results),
                 scene_sha256=scene_digest(),
+                code_sha256=hashlib.sha256(b''.join(
+                    p.name.encode()+p.read_bytes() for p in sorted(Path(__file__).parent.glob('*.py')))).hexdigest(),
                 rule_sha256=arena.rules.digest,rule_version=arena.rules.version,
                 environment={'python':platform.python_version(),'platform':platform.platform(),
                              **{p:version(p) for p in ('mujoco','numpy','onnx','onnxruntime')}})
