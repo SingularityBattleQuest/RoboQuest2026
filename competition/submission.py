@@ -69,7 +69,10 @@ class Policy:
         if obs.shape!=(self.obs_dim,) or not np.all(np.isfinite(obs)):
             raise SubmissionError('Invalid observation')
         start=time.monotonic()
-        out=self.session.run(None,{self.input:obs[None]})[0]
+        try:
+            out=self.session.run(None,{self.input:obs[None]})[0]
+        except Exception as error:
+            raise SubmissionError(f'Inference failed: {type(error).__name__}') from error
         if not self._warmup and time.monotonic()-start>.1:
             raise SubmissionError('Inference exceeded 100ms')
         if out.shape!=(1,self.action_dim) or not np.all(np.isfinite(out)):

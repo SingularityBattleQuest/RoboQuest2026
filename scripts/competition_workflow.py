@@ -9,6 +9,7 @@ import gymnasium as gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import VecNormalize
+from stable_baselines3.common.callbacks import BaseCallback
 from competition.arena import Arena,gait_action
 from competition.rules import VERSION
 from competition.submission import Policy,make_package,Submission
@@ -16,6 +17,17 @@ from scripts.export_for_web import export_normalized_policy_onnx,NormalizedPolic
 from scripts.bootstrap_smooth_walk import SMOOTH_ENV,SMOOTH_REWARD,SMOOTH_PPO
 from roboquest.envs.go2_walk_env import Go2WalkEnv
 from roboquest.utils.reward_utils import WalkRewardConfig
+
+
+class TrainingProgress(BaseCallback):
+    def __init__(self,label):
+        super().__init__();self.label=label;self.next_update=2000
+
+    def _on_step(self):
+        if self.num_timesteps>=self.next_update:
+            print(f'{self.label}: {self.num_timesteps} ステップ完了',flush=True)
+            self.next_update+=2000
+        return True
 
 
 class CompetitionWalk(gym.ObservationWrapper):
@@ -158,7 +170,7 @@ def train_competition_walk(save_dir,seed=0,sample_steps=30000,updates=4000,ppo_s
                 optimizer.zero_grad();loss.backward();optimizer.step()
             print(f'本番用の再発進学習 {round_index+1}/3 完了',flush=True)
         print(f'歩行PPO {ppo_steps}ステップ',flush=True)
-        model.learn(total_timesteps=ppo_steps,progress_bar=False)
+        model.learn(total_timesteps=ppo_steps,progress_bar=False,callback=TrainingProgress('本番歩行PPO'))
         (folder/'walk_params.json').write_text(json.dumps({'version':VERSION,'walk_env_kwargs':settings}))
         policy,error=_verified_export(model,env,folder,'walk',observations)
     finally:env.close()
@@ -222,7 +234,7 @@ def train_competition_flee(save_dir,seed=0,sample_steps=12000,updates=2000,ppo_s
     try:
         _fit(model,env,observations,targets,updates,seed)
         print(f'逃げPPO {ppo_steps}ステップ',flush=True)
-        model.learn(total_timesteps=ppo_steps,progress_bar=False)
+        model.learn(total_timesteps=ppo_steps,progress_bar=False,callback=TrainingProgress('逃げPPO'))
         policy,error=_verified_export(model,env,folder,'flee',observations)
         (folder/'competition_training.json').write_text(json.dumps(dict(version=VERSION,seed=seed,
             sample_steps=sample_steps,updates=updates,ppo_steps=int(model.num_timesteps),export_error=error),indent=2))
