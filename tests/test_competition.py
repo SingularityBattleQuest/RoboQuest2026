@@ -127,3 +127,25 @@ def test_full_sixty_seconds_and_fall_duration_boundary():
         mujoco.mj_forward(a.model,a.data)
         assert a.step(np.zeros(12))['reason']=='fell'
     finally:a.close()
+
+
+def test_published_oni_all_speed_tiers_and_model_hash(tmp_path):
+    import hashlib
+    import competition.arena as arena_module
+    folder=Path(arena_module.__file__).parent/'oni'
+    manifest=json.loads((folder/'manifest.json').read_text())
+    assert hashlib.sha256((folder/'walk.onnx').read_bytes()).hexdigest()==manifest['sha256']
+    for speed in (.3,.4,.5):
+        a=Arena(Rules(oni_speed=speed))
+        try:
+            for spawn in ('east','north','west','south'):
+                a.reset(100,spawn)
+                while not a.reason:a.step(gait_action(a.data.time,0.))
+                assert a.reason=='captured' and a.position('oni')[2]>.15
+                assert a.result()['oni_sha256']==manifest['sha256']
+        finally:a.close()
+    bad=tmp_path/'oni';bad.mkdir()
+    (bad/'manifest.json').write_text(json.dumps(manifest))
+    (bad/'walk.onnx').write_bytes((folder/'walk.onnx').read_bytes()+b'changed')
+    with patch.object(arena_module,'Path',return_value=tmp_path/'arena.py'):
+        with pytest.raises(ValueError,match='hash mismatch'):Arena()

@@ -51,7 +51,7 @@ def evaluate(submission_path,oni_speed=.3,video=None):
         if writer:writer.close()
     score_ticks=sum(round(r['survived_seconds']/.002) for r in results)
     return dict(team=package.manifest['team'],submission_sha256=package.sha256,
-                oni_speed=oni_speed,episodes=results,score_ticks=score_ticks,
+                oni_speed=oni_speed,oni_sha256=arena.oni_digest,episodes=results,score_ticks=score_ticks,
                 mean_survival_seconds=score_ticks*.002/len(results),
                 completions=sum(r['reason']=='survived' for r in results),
                 scene_sha256=scene_digest(),
