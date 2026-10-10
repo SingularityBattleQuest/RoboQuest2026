@@ -29,6 +29,8 @@ def evaluate(submission_path,oni_speed=.3,video=None):
         for seed in SEEDS:
             for spawn in SPAWNS:
                 arena.reset(seed,spawn);package.reset()
+                if writer and seed==SEEDS[0] and spawn==SPAWNS[0]:
+                    writer.append_data(arena.render())
                 while not arena.reason:
                     try:action=package.action(arena)
                     except SubmissionError as e:
@@ -41,6 +43,8 @@ def evaluate(submission_path,oni_speed=.3,video=None):
                     if writer and seed==SEEDS[0] and spawn==SPAWNS[0] and arena.ticks%5==0:
                         writer.append_data(arena.render())
                 results.append(result)
+                if writer and seed==SEEDS[0] and spawn==SPAWNS[0] and arena.ticks%5:
+                    writer.append_data(arena.render())
                 print(f"{seed}/{spawn}: {result['survived_seconds']:.3f}s {result['reason']}",flush=True)
     finally:
         arena.close()

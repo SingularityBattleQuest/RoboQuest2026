@@ -1,0 +1,6 @@
+.git
+.venv*
+artifacts
+output
+**/__pycache__
+**/*.pyc
