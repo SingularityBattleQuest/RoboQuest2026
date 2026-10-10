@@ -64,9 +64,14 @@ def test_failed_export_worker_keeps_model_and_blocks_stale_viewer(cells, tmp_pat
         exec(cell(cells, 'ビューアー用に変換'), context)
     assert source.read_bytes() == b'saved model must survive'
     assert 'export worker failed' in (tmp_path / 'walk_viewer_export.log').read_text()
-    for title in ['歩行ビューアー', '鬼ごっこビューアー']:
-        with pytest.raises(RuntimeError, match='先に「ビューアー用に変換」'):
-            exec(cell(cells, title), context)
+    with pytest.raises(RuntimeError, match='先に「ビューアー用に変換」'):
+        exec(cell(cells, '歩行ビューアー'), context)
+    with pytest.raises(RuntimeError, match='先に「保存した逃げAIを評価」'):
+        exec(cell(cells, '鬼ごっこビューアー'), context)
+    # A recorded match is independent of the optional 3D walk export.
+    (tmp_path/'competition_match.mp4').write_bytes(b'video fixture')
+    monkeypatch.setattr('IPython.display.display', lambda *args: None)
+    exec(cell(cells, '鬼ごっこビューアー'), context)
 
 
 def test_export_cell_runs_real_saved_model(cells, tmp_path, monkeypatch):

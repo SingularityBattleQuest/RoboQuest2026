@@ -12,7 +12,8 @@
     "samples": 24000,
     "updates": 16000,
     "teacher_max_action_error": 0.07991409301757812,
-    "used_observations": "velocity commands and public phase; physical feedback features reserved"
+    "used_observations": "velocity commands and public phase; physical feedback features reserved",
+    "framework": "PyTorch 2.14.0; CPU; Python 3.12.12"
   },
   "qualification": [
     {

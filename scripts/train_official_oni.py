@@ -49,7 +49,7 @@ def train(destination='competition/oni',updates=16000):
     manifest=dict(version=VERSION,model='walk.onnx',sha256=hashlib.sha256((folder/'walk.onnx').read_bytes()).hexdigest(),
         observation_dim=47,action_dim=12,normalization='identity embedded in trained input contract',
         training=dict(recipe='scripts.train_official_oni.train',seed=2026,algorithm='supervised behavior cloning',
-            samples=len(x),updates=updates,teacher_max_action_error=error,
+            samples=len(x),updates=updates,framework=f'PyTorch {torch.__version__}; CPU',teacher_max_action_error=error,
             used_observations='velocity commands and public phase; physical feedback features reserved'))
     (folder/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     print(json.dumps(manifest),flush=True)
