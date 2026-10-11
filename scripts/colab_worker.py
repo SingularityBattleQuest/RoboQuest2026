@@ -9,6 +9,13 @@ sys.path.insert(0, str(ROOT))
 
 
 def execute(operation, args, kwargs):
+    if operation in ('prepare_oni', 'record_oni_demo', 'train_competition_walk',
+                     'train_competition_flee', 'package_competition', 'evaluate_competition'):
+        import os
+        if sys.platform == 'linux':
+            os.environ.setdefault('MUJOCO_GL', 'egl')
+        from scripts import competition_workflow
+        return getattr(competition_workflow, operation)(*args, **kwargs)
     if operation == 'record_walk':
         import os
         if sys.platform == 'linux':
